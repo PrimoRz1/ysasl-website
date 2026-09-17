@@ -6,11 +6,18 @@ export default async function Home() {
     .select('id, nombre')
     .order('orden')
 
-  const { data: equipos, error: errorEquipos } = await supabase
-    .from('equipos')
-    .select('id, nombre, division_id')
+  const { data: inscripciones, error: errorInscripciones } = await supabase
+    .from('inscripciones_equipo')
+    .select(`
+      id,
+      division_id,
+      equipos (
+        id,
+        nombre,
+        activo
+      )
+    `)
     .eq('activo', true)
-    .order('nombre')
 
   return (
     <main>
@@ -18,11 +25,10 @@ export default async function Home() {
       <h2>YSASL</h2>
       <p>Sitio oficial de la liga.</p>
 
-      {(errorDivisiones || errorEquipos) && (
+      {(errorDivisiones || errorInscripciones) && (
         <p>
-          Error conectando con Supabase:
-          {' '}
-          {errorDivisiones?.message || errorEquipos?.message}
+          Error conectando con Supabase:{' '}
+          {errorDivisiones?.message || errorInscripciones?.message}
         </p>
       )}
 
@@ -30,10 +36,19 @@ export default async function Home() {
         <section key={division.id}>
           <h2>{division.nombre}</h2>
 
-          {equipos
-            ?.filter((equipo) => equipo.division_id === division.id)
-            .map((equipo) => (
-              <p key={equipo.id}>{equipo.nombre}</p>
+          {inscripciones
+            ?.filter(
+              (inscripcion) =>
+                inscripcion.division_id === division.id &&
+                inscripcion.equipos?.activo
+            )
+            .sort((a, b) =>
+              a.equipos.nombre.localeCompare(b.equipos.nombre)
+            )
+            .map((inscripcion) => (
+              <p key={inscripcion.id}>
+                {inscripcion.equipos.nombre}
+              </p>
             ))}
         </section>
       ))}
