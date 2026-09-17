@@ -1,10 +1,16 @@
 import { supabase } from '../lib/supabase'
 
 export default async function Home() {
-  const { data: divisiones, error } = await supabase
+  const { data: divisiones, error: errorDivisiones } = await supabase
     .from('divisiones')
     .select('id, nombre')
     .order('orden')
+
+  const { data: equipos, error: errorEquipos } = await supabase
+    .from('equipos')
+    .select('id, nombre, division_id')
+    .eq('activo', true)
+    .order('nombre')
 
   return (
     <main>
@@ -12,14 +18,24 @@ export default async function Home() {
       <h2>YSASL</h2>
       <p>Sitio oficial de la liga.</p>
 
-      <h3>Divisiones</h3>
-
-      {error && (
-        <p>Error conectando con Supabase: {error.message}</p>
+      {(errorDivisiones || errorEquipos) && (
+        <p>
+          Error conectando con Supabase:
+          {' '}
+          {errorDivisiones?.message || errorEquipos?.message}
+        </p>
       )}
 
       {divisiones?.map((division) => (
-        <p key={division.id}>{division.nombre}</p>
+        <section key={division.id}>
+          <h2>{division.nombre}</h2>
+
+          {equipos
+            ?.filter((equipo) => equipo.division_id === division.id)
+            .map((equipo) => (
+              <p key={equipo.id}>{equipo.nombre}</p>
+            ))}
+        </section>
       ))}
     </main>
   )
