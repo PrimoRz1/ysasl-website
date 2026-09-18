@@ -1,5 +1,5 @@
 import { supabase } from '../../lib/supabase'
-
+import Link from 'next/link'
 export const dynamic = 'force-dynamic'
 
 export default async function EquiposPage() {
@@ -81,7 +81,8 @@ export default async function EquiposPage() {
               }}
             >
               {equiposDivision?.map((equipo) => (
-                <div
+                <Link
+  href={`/equipos/${equipo.id}`}
                   key={equipo.id}
                   style={{
                     border: '1px solid #ddd',
@@ -125,7 +126,7 @@ export default async function EquiposPage() {
                   <strong style={{ fontSize: '17px' }}>
                     {equipo.nombre}
                   </strong>
-                </div>
+                </Link>
               ))}
             </div>
           </section>
