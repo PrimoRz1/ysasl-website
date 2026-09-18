@@ -76,12 +76,16 @@ export default function AdminPage() {
 
 function AdminCard({ titulo, descripcion, href }) {
   return (
-    <Link href={href || '#'}>
+    <Link
+      href={href || '#'}
       style={{
         border: '1px solid #ddd',
         borderRadius: '10px',
         padding: '24px',
-        background: 'white'
+        background: 'white',
+        textDecoration: 'none',
+        color: 'inherit',
+        display: 'block'
       }}
     >
       <h2 style={{ marginTop: 0 }}>{titulo}</h2>
