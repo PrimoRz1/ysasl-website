@@ -2,6 +2,7 @@
 
 import { useEffect, useState } from 'react'
 import { useRouter } from 'next/navigation'
+import Link from 'next/link'
 import { supabase } from '../../lib/supabase'
 
 export default function AdminPage() {
@@ -63,7 +64,7 @@ export default function AdminPage() {
         }}
       >
         <AdminCard titulo="Equipos" descripcion="Administrar equipos de la liga" />
-        <AdminCard titulo="Jugadores" descripcion="Agregar y editar jugadores" />
+        <AdminCard titulo="Jugadores" descripcion="Agregar y editar jugadores" href="/admin/jugadores" />
         <AdminCard titulo="Partidos" descripcion="Programar partidos y jornadas" />
         <AdminCard titulo="Resultados" descripcion="Registrar resultados" />
         <AdminCard titulo="Disciplina" descripcion="Tarjetas y suspensiones" />
@@ -73,9 +74,9 @@ export default function AdminPage() {
   )
 }
 
-function AdminCard({ titulo, descripcion }) {
+function AdminCard({ titulo, descripcion, href }) {
   return (
-    <div
+    <Link href={href || '#'}>
       style={{
         border: '1px solid #ddd',
         borderRadius: '10px',
@@ -85,6 +86,6 @@ function AdminCard({ titulo, descripcion }) {
     >
       <h2 style={{ marginTop: 0 }}>{titulo}</h2>
       <p>{descripcion}</p>
-    </div>
+    </Link>
   )
 }
