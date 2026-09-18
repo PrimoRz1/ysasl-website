@@ -1,4 +1,54 @@
+'use client'
+
+import { useEffect, useState } from 'react'
+import { useRouter } from 'next/navigation'
+import { supabase } from '../../lib/supabase'
+
 export default function AdminPage() {
+  const router = useRouter()
+  const [verificando, setVerificando] = useState(true)
+  const [autorizado, setAutorizado] = useState(false)
+
+  useEffect(() => {
+    async function verificarAcceso() {
+      const {
+        data: { user }
+      } = await supabase.auth.getUser()
+
+      if (!user) {
+        router.replace('/login')
+        return
+      }
+
+      const { data: perfil, error } = await supabase
+        .from('perfiles')
+        .select('rol')
+        .eq('id', user.id)
+        .single()
+
+      if (error || !perfil || perfil.rol !== 'admin') {
+        await supabase.auth.signOut()
+        router.replace('/login')
+        return
+      }
+
+      setAutorizado(true)
+      setVerificando(false)
+    }
+
+    verificarAcceso()
+  }, [router])
+
+  if (verificando) {
+    return (
+      <main style={{ maxWidth: '1100px', margin: '40px auto', padding: '0 20px' }}>
+        <p>Verificando acceso...</p>
+      </main>
+    )
+  }
+
+  if (!autorizado) return null
+
   return (
     <main style={{ maxWidth: '1100px', margin: '40px auto', padding: '0 20px' }}>
       <h1>Panel de Administración</h1>
