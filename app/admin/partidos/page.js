@@ -146,9 +146,7 @@ function editarPartido(partido) {
     fecha: fecha,
     hora: hora
   })
-  .eq('jornada_id', Number(jornadaId))
-  .eq('local_id', Number(localId))
-  .eq('visitante_id', Number(visitanteId))
+  .eq('id', partidoEditandoId)
 
   if (error) {
     console.error(error)
@@ -156,9 +154,10 @@ function editarPartido(partido) {
     setGuardando(false)
     return
   }
-
+await cargarPartidosJornada(jornadaId)
   setMensaje('Partido guardado correctamente.')
-  setJornadaId('')
+  setPartidoEditandoId(null)
+    setJornadaId('')
   setLocalId('')
   setVisitanteId('')
   setCampoId('')
