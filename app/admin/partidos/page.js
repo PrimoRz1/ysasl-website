@@ -19,7 +19,7 @@ const [mensaje, setMensaje] = useState('')
   const [equipos, setEquipos] = useState([])
   const [jornadas, setJornadas] = useState([])
   const [campos, setCampos] = useState([])
-
+const [partidosJornada, setPartidosJornada] = useState([])
   const [divisionId, setDivisionId] = useState('')
   const [cargando, setCargando] = useState(true)
   const [error, setError] = useState('')
@@ -85,6 +85,35 @@ const [mensaje, setMensaje] = useState('')
 
     setCargando(false)
   }
+
+  async function cargarPartidosJornada(idJornada) {
+  if (!idJornada) {
+    setPartidosJornada([])
+    return
+  }
+
+  const { data, error } = await supabase
+    .from('partidos')
+    .select(`
+      id,
+      jornada_id,
+      local_id,
+      visitante_id,
+      campo_id,
+      fecha,
+      hora
+    `)
+    .eq('jornada_id', Number(idJornada))
+    .order('id')
+
+  if (error) {
+    console.error(error)
+    setPartidosJornada([])
+    return
+  }
+
+  setPartidosJornada(data || [])
+}
 async function guardarPartido() {
   setMensaje('')
 
@@ -220,7 +249,10 @@ async function guardarPartido() {
 
             <select
               value={jornadaId}
-onChange={(e) => setJornadaId(e.target.value)}
+onChange={(e) => {
+  setJornadaId(e.target.value)
+  cargarPartidosJornada(e.target.value)
+}}
               disabled={!divisionId}
               style={{
                 width: '100%',
