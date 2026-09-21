@@ -101,17 +101,15 @@ async function guardarPartido() {
   setGuardando(true)
 
   const { error } = await supabase
-    .from('partidos')
-    .insert([
-      {
-        jornada_id: Number(jornadaId),
-        local_id: Number(localId),
-        visitante_id: Number(visitanteId),
-        campo_id: Number(campoId),
-        fecha: fecha,
-        hora: hora
-      }
-    ])
+  .from('partidos')
+  .update({
+    campo_id: Number(campoId),
+    fecha: fecha,
+    hora: hora
+  })
+  .eq('jornada_id', Number(jornadaId))
+  .eq('local_id', Number(localId))
+  .eq('visitante_id', Number(visitanteId))
 
   if (error) {
     console.error(error)
