@@ -445,7 +445,7 @@ onChange={(e) => setHora(e.target.value)}
     cursor: 'pointer'
   }}
 >
-  {guardando ? 'Guardando...' : 'Guardar partido'}
+  {guardando ? 'Guardando...' : partidoEditandoId ? 'Actualizar partido' : 'Guardar partido'}
 </button>
 
 {mensaje && (
