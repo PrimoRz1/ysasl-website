@@ -37,7 +37,7 @@ export default function AdminPartidosPage() {
 
       supabase
         .from('equipos')
-        .select('id, nombre')
+        .select('id, nombre, division_id')
         .order('nombre'),
 
       supabase
