@@ -65,7 +65,7 @@ export default function AdminPage() {
       >
         <AdminCard titulo="Equipos" descripcion="Administrar equipos de la liga" />
         <AdminCard titulo="Jugadores" descripcion="Agregar y editar jugadores" href="/admin/jugadores" />
-        <AdminCard titulo="Partidos" descripcion="Programar partidos y jornadas" />
+        <AdminCard titulo="Partidos" descripcion="Programar partidos y jornadas" href="/admin/partidos" />
         <AdminCard titulo="Resultados" descripcion="Registrar resultados" />
         <AdminCard titulo="Disciplina" descripcion="Tarjetas y suspensiones" />
         <AdminCard titulo="Patrocinadores" descripcion="Administrar patrocinadores" />
