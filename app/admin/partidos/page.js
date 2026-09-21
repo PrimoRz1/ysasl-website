@@ -157,7 +157,7 @@ function editarPartido(partido) {
 await cargarPartidosJornada(jornadaId)
   setMensaje('Partido guardado correctamente.')
   setPartidoEditandoId(null)
-    setJornadaId('')
+    
   setLocalId('')
   setVisitanteId('')
   setCampoId('')
