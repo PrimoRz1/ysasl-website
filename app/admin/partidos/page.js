@@ -156,12 +156,19 @@ async function guardarPartido() {
     setMensaje('El equipo local y visitante no pueden ser el mismo.')
     return
   }
-  const conflicto = partidosJornada.find((partido) =>
-  partido.id !== partidoEditandoId &&
-  partido.fecha === fecha &&
-  partido.hora === hora &&
-  Number(partido.campo_id) === Number(campoId)
-)
+  const conflicto = partidosJornada.find((partido) => {
+  const mismoPartido =
+    partidoEditandoId &&
+    String(partido.id) === String(partidoEditandoId)
+
+  const mismaFecha = partido.fecha === fecha
+  const mismaHora =
+    String(partido.hora).slice(0, 5) === String(hora).slice(0, 5)
+  const mismoCampo =
+    Number(partido.campo_id) === Number(campoId)
+
+  return !mismoPartido && mismaFecha && mismaHora && mismoCampo
+})
 
 if (conflicto) {
   setMensaje('Ya existe otro partido en este campo, fecha y hora.')
