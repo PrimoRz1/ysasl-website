@@ -217,7 +217,9 @@ export default function AdminPartidosPage() {
                 Seleccionar equipo local
               </option>
 
-              {equipos.map((equipo) => (
+              {equipos
+  .filter((equipo) => String(equipo.division_id) === String(divisionId))
+  .map((equipo) => (
                 <option
                   key={equipo.id}
                   value={equipo.id}
@@ -249,14 +251,16 @@ export default function AdminPartidosPage() {
                 Seleccionar equipo visitante
               </option>
 
-              {equipos.map((equipo) => (
-                <option
-                  key={equipo.id}
-                  value={equipo.id}
-                >
-                  {equipo.nombre}
-                </option>
-              ))}
+              {equipos
+  .filter((equipo) => String(equipo.division_id) === String(divisionId))
+  .map((equipo) => (
+    <option
+      key={equipo.id}
+      value={equipo.id}
+    >
+      {equipo.nombre}
+    </option>
+  ))}
             </select>
           </div>
 
