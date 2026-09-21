@@ -124,7 +124,7 @@ function editarPartido(partido) {
   setFecha(partido.fecha || '')
   setHora(partido.hora || '')
   setMensaje('')
-
+}
   async function eliminarPartido(id) {
   const confirmar = window.confirm('¿Seguro que quieres eliminar este partido?')
 
@@ -144,7 +144,7 @@ function editarPartido(partido) {
   setMensaje('Partido eliminado correctamente.')
   await cargarPartidosJornada(jornadaId)
 }
-}async function guardarPartido() {
+async function guardarPartido() {
   setMensaje('')
 
   if (!divisionId || !jornadaId || !localId || !visitanteId || !campoId || !fecha || !hora) {
