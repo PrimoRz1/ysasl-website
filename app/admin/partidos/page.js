@@ -443,6 +443,45 @@ onChange={(e) => setHora(e.target.value)}
   <p style={{ marginTop: '15px', fontWeight: 'bold' }}>
     {mensaje}
   </p>
+)}{jornadaId && partidosJornada.length > 0 && (
+  <div style={{ marginTop: '25px' }}>
+    <h3>Partidos de esta jornada</h3>
+
+    {partidosJornada.map((partido) => {
+      const local = equipos.find(
+        (equipo) => Number(equipo.id) === Number(partido.local_id)
+      )
+
+      const visitante = equipos.find(
+        (equipo) => Number(equipo.id) === Number(partido.visitante_id)
+      )
+
+      return (
+        <div
+          key={partido.id}
+          style={{
+            padding: '10px',
+            marginTop: '8px',
+            border: '1px solid #ddd',
+            borderRadius: '6px'
+          }}
+        >
+          <strong>
+            {local?.nombre || 'Equipo local'} vs{' '}
+            {visitante?.nombre || 'Equipo visitante'}
+          </strong>
+
+          {partido.fecha && (
+            <span> — {partido.fecha}</span>
+          )}
+
+          {partido.hora && (
+            <span> — {partido.hora}</span>
+          )}
+        </div>
+      )
+    })}
+  </div>
 )}
         </div>
       )}
