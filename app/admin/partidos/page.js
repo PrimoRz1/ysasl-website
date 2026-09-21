@@ -124,6 +124,26 @@ function editarPartido(partido) {
   setFecha(partido.fecha || '')
   setHora(partido.hora || '')
   setMensaje('')
+
+  async function eliminarPartido(id) {
+  const confirmar = window.confirm('¿Seguro que quieres eliminar este partido?')
+
+  if (!confirmar) return
+
+  const { error } = await supabase
+    .from('partidos')
+    .delete()
+    .eq('id', id)
+
+  if (error) {
+    console.error(error)
+    setMensaje('Error al eliminar el partido.')
+    return
+  }
+
+  setMensaje('Partido eliminado correctamente.')
+  await cargarPartidosJornada(jornadaId)
+}
 }async function guardarPartido() {
   setMensaje('')
 
@@ -468,7 +488,7 @@ onChange={(e) => setHora(e.target.value)}
       return (
         <div
           key={partido.id}
-                         onClick={() => editarPartido(partido)}
+                         
           style={{
             padding: '10px',
             marginTop: '8px',
@@ -488,6 +508,21 @@ onChange={(e) => setHora(e.target.value)}
           {partido.hora && (
             <span> — {partido.hora}</span>
           )}
+<button
+  type="button"
+  onClick={() => editarPartido(partido)}
+  style={{ marginLeft: '15px' }}
+>
+  Editar
+</button>
+
+<button
+  type="button"
+  onClick={() => eliminarPartido(partido.id)}
+  style={{ marginLeft: '8px' }}
+>
+  Eliminar
+</button>
         </div>
       )
     })}
