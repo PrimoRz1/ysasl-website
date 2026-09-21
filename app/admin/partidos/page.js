@@ -8,6 +8,14 @@ export default function AdminPartidosPage() {
   const router = useRouter()
 
   const [divisiones, setDivisiones] = useState([])
+  const [jornadaId, setJornadaId] = useState('')
+const [localId, setLocalId] = useState('')
+const [visitanteId, setVisitanteId] = useState('')
+const [campoId, setCampoId] = useState('')
+const [fecha, setFecha] = useState('')
+const [hora, setHora] = useState('')
+const [guardando, setGuardando] = useState(false)
+const [mensaje, setMensaje] = useState('')
   const [equipos, setEquipos] = useState([])
   const [jornadas, setJornadas] = useState([])
   const [campos, setCampos] = useState([])
@@ -77,6 +85,51 @@ export default function AdminPartidosPage() {
 
     setCargando(false)
   }
+async function guardarPartido() {
+  setMensaje('')
+
+  if (!divisionId || !jornadaId || !localId || !visitanteId || !campoId || !fecha || !hora) {
+    setMensaje('Completa todos los campos.')
+    return
+  }
+
+  if (localId === visitanteId) {
+    setMensaje('El equipo local y visitante no pueden ser el mismo.')
+    return
+  }
+
+  setGuardando(true)
+
+  const { error } = await supabase
+    .from('partidos')
+    .insert([
+      {
+        jornada_id: Number(jornadaId),
+        local_id: Number(localId),
+        visitante_id: Number(visitanteId),
+        campo_id: Number(campoId),
+        fecha: fecha,
+        hora: hora
+      }
+    ])
+
+  if (error) {
+    console.error(error)
+    setMensaje('Error al guardar el partido.')
+    setGuardando(false)
+    return
+  }
+
+  setMensaje('Partido guardado correctamente.')
+  setJornadaId('')
+  setLocalId('')
+  setVisitanteId('')
+  setCampoId('')
+  setFecha('')
+  setHora('')
+  setGuardando(false)
+}
+  
 
   const jornadasFiltradas = jornadas.filter(
     (jornada) =>
@@ -168,7 +221,8 @@ export default function AdminPartidosPage() {
             <br />
 
             <select
-              defaultValue=""
+              value={jornadaId}
+onChange={(e) => setJornadaId(e.target.value)}
               disabled={!divisionId}
               style={{
                 width: '100%',
@@ -206,7 +260,8 @@ export default function AdminPartidosPage() {
             <br />
 
             <select
-              defaultValue=""
+              value={localId}
+onChange={(e) => setLocalId(e.target.value)}
               style={{
                 width: '100%',
                 padding: '10px',
@@ -240,7 +295,8 @@ export default function AdminPartidosPage() {
             <br />
 
             <select
-              defaultValue=""
+              value={visitanteId}
+onChange={(e) => setVisitanteId(e.target.value)}
               style={{
                 width: '100%',
                 padding: '10px',
@@ -274,7 +330,8 @@ export default function AdminPartidosPage() {
             <br />
 
             <select
-              defaultValue=""
+              value={campoId}
+onChange={(e) => setCampoId(e.target.value)}
               style={{
                 width: '100%',
                 padding: '10px',
@@ -307,6 +364,8 @@ export default function AdminPartidosPage() {
 
             <input
               type="date"
+value={fecha}
+onChange={(e) => setFecha(e.target.value)}
               style={{
                 width: '100%',
                 padding: '10px',
@@ -326,6 +385,8 @@ export default function AdminPartidosPage() {
 
             <input
               type="time"
+value={hora}
+onChange={(e) => setHora(e.target.value)}
               style={{
                 width: '100%',
                 padding: '10px',
@@ -333,6 +394,26 @@ export default function AdminPartidosPage() {
               }}
             />
           </div>
+              <button
+  type="button"
+  onClick={guardarPartido}
+  disabled={guardando}
+  style={{
+    width: '100%',
+    padding: '12px',
+    marginTop: '25px',
+    fontWeight: 'bold',
+    cursor: 'pointer'
+  }}
+>
+  {guardando ? 'Guardando...' : 'Guardar partido'}
+</button>
+
+{mensaje && (
+  <p style={{ marginTop: '15px', fontWeight: 'bold' }}>
+    {mensaje}
+  </p>
+)}
         </div>
       )}
     </main>
