@@ -20,6 +20,7 @@ const [mensaje, setMensaje] = useState('')
   const [jornadas, setJornadas] = useState([])
   const [campos, setCampos] = useState([])
 const [partidosJornada, setPartidosJornada] = useState([])
+  const [partidoEditandoId, setPartidoEditandoId] = useState(null)
   const [divisionId, setDivisionId] = useState('')
   const [cargando, setCargando] = useState(true)
   const [error, setError] = useState('')
@@ -114,7 +115,16 @@ const [partidosJornada, setPartidosJornada] = useState([])
 
   setPartidosJornada(data || [])
 }
-async function guardarPartido() {
+function editarPartido(partido) {
+  setPartidoEditandoId(partido.id)
+  setJornadaId(String(partido.jornada_id))
+  setLocalId(String(partido.local_id))
+  setVisitanteId(String(partido.visitante_id))
+  setCampoId(partido.campo_id ? String(partido.campo_id) : '')
+  setFecha(partido.fecha || '')
+  setHora(partido.hora || '')
+  setMensaje('')
+}async function guardarPartido() {
   setMensaje('')
 
   if (!divisionId || !jornadaId || !localId || !visitanteId || !campoId || !fecha || !hora) {
@@ -459,6 +469,7 @@ onChange={(e) => setHora(e.target.value)}
       return (
         <div
           key={partido.id}
+                         onClick={() => editarPartido(partido)}
           style={{
             padding: '10px',
             marginTop: '8px',
