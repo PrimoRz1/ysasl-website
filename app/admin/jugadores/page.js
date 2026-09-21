@@ -19,6 +19,8 @@ export default function AdminJugadoresPage() {
   const [editNombre, setEditNombre] = useState('')
   const [editEquipoId, setEditEquipoId] = useState('')
   const [editNumero, setEditNumero] = useState('')
+  const [busqueda, setBusqueda] = useState('')
+const [filtroEquipo, setFiltroEquipo] = useState('')
 
   useEffect(() => {
     verificarAcceso()
@@ -191,7 +193,17 @@ export default function AdminJugadoresPage() {
 
   function nombreEquipo(id) {
     return equipos.find(equipo => equipo.id === id)?.nombre || 'Equipo'
-  }
+  }const jugadoresFiltrados = jugadores.filter(jugador => {
+  const coincideNombre = jugador.nombre
+    .toLowerCase()
+    .includes(busqueda.toLowerCase())
+
+  const coincideEquipo =
+    !filtroEquipo ||
+    String(jugador.equipo_id) === String(filtroEquipo)
+
+  return coincideNombre && coincideEquipo
+})
 
   if (verificando) {
     return (
@@ -279,7 +291,55 @@ export default function AdminJugadoresPage() {
       )}
 
       <section style={{ marginTop: '40px' }}>
-        <h2>Jugadores registrados</h2>
+        <h2>Jugadores registrados</h2><div
+  style={{
+    display: 'flex',
+    gap: '15px',
+    flexWrap: 'wrap',
+    marginTop: '20px',
+    marginBottom: '20px'
+  }}
+>
+  <div style={{ flex: '1', minWidth: '250px' }}>
+    <label>Buscar jugador</label>
+    <input
+      type="text"
+      placeholder="Escribe el nombre del jugador..."
+      value={busqueda}
+      onChange={e => setBusqueda(e.target.value)}
+      style={{
+        display: 'block',
+        width: '100%',
+        padding: '10px',
+        marginTop: '6px',
+        boxSizing: 'border-box'
+      }}
+    />
+  </div>
+
+  <div style={{ flex: '1', minWidth: '250px' }}>
+    <label>Filtrar por equipo</label>
+    <select
+      value={filtroEquipo}
+      onChange={e => setFiltroEquipo(e.target.value)}
+      style={{
+        display: 'block',
+        width: '100%',
+        padding: '10px',
+        marginTop: '6px',
+        boxSizing: 'border-box'
+      }}
+    >
+      <option value="">Todos los equipos</option>
+
+      {equipos.map(equipo => (
+        <option key={equipo.id} value={equipo.id}>
+          {equipo.nombre}
+        </option>
+      ))}
+    </select>
+  </div>
+</div>
 
         {jugadores.length === 0 ? (
           <p>Todavía no hay jugadores registrados.</p>
@@ -303,7 +363,7 @@ export default function AdminJugadoresPage() {
               </thead>
 
               <tbody>
-                {jugadores.map(jugador => (
+                {jugadoresFiltrados.map(jugador => (
                   <tr key={jugador.id}>
                     {editandoId === jugador.id ? (
                       <>
