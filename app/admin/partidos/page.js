@@ -175,6 +175,27 @@ if (conflicto) {
   return
 }
 
+  const equipoOcupado = partidosJornada.find((partido) => {
+  const mismoPartido =
+    partidoEditandoId &&
+    String(partido.id) === String(partidoEditandoId)
+
+  return (
+    !mismoPartido &&
+    (
+      Number(partido.local_id) === Number(localId) ||
+      Number(partido.visitante_id) === Number(localId) ||
+      Number(partido.local_id) === Number(visitanteId) ||
+      Number(partido.visitante_id) === Number(visitanteId)
+    )
+  )
+})
+
+if (equipoOcupado) {
+  setMensaje('Uno de estos equipos ya tiene un partido en esta jornada.')
+  return
+}
+
   setGuardando(true)
 
   const { error } = await supabase
