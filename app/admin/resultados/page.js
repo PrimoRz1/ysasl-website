@@ -43,7 +43,7 @@ const [goleadores, setGoleadores] = useState({})
   async function cargarJugadores() {
   const { data, error } = await supabase
     .from('jugadores')
-    .select('id, equipo_id, nombre')
+    .select('id, equipo_id, nombre, numero')
     .eq('activo', true)
     .order('nombre', { ascending: true })
 
@@ -331,7 +331,7 @@ function agregarGoleador(partido, equipoId) {
         )
         .map((jugador) => (
           <option key={jugador.id} value={jugador.id}>
-            {jugador.nombre}
+            {jugador.numero ? `#${jugador.numero} - ${jugador.nombre}` : jugador.nombre}
           </option>
         ))}
     </select>
