@@ -9,22 +9,43 @@ export default async function Clasificacion() {
     .order('orden')
 
   const { data: partidos, error: errorPartidos } = await supabase
-    .from('calendario_partidos')
+    .from('partidos')
     .select('*')
     .eq('estado', 'finalizado')
 
-  const hayError = errorDivisiones || errorPartidos
+  const { data: equipos, error: errorEquipos } = await supabase
+  .from('equipos')
+  .select('id, division_id, nombre')
+
+  const hayError = errorDivisiones || errorPartidos || errorEquipos
 
   function calcularClasificacion(divisionId) {
     const tabla = {}
+    const equiposDivision = (equipos || []).filter(
+  (equipo) => Number(equipo.division_id) === Number(divisionId)
+)
+
+equiposDivision.forEach((equipo) => {
+  tabla[equipo.id] = {
+    equipo: equipo.nombre,
+    pj: 0,
+    pg: 0,
+    pe: 0,
+    pp: 0,
+    gf: 0,
+    gc: 0,
+    dg: 0,
+    pts: 0,
+  }
+})
 
     const partidosDivision = (partidos || []).filter(
       (partido) => Number(partido.division_id) === Number(divisionId)
     )
 
     partidosDivision.forEach((partido) => {
-      const local = partido.local
-      const visitante = partido.visitante
+      const local = partido.local_id
+const visitante = partido.visitante_id
 
       const golesLocal = Number(partido.goles_local)
       const golesVisitante = Number(partido.goles_visitante)
@@ -40,7 +61,7 @@ export default async function Clasificacion() {
 
       if (!tabla[local]) {
         tabla[local] = {
-          equipo: local,
+          equipo: equipos?.find((e) => Number(e.id) === Number(local))?.nombre || `Equipo ${local}`,
           pj: 0,
           pg: 0,
           pe: 0,
@@ -54,7 +75,7 @@ export default async function Clasificacion() {
 
       if (!tabla[visitante]) {
         tabla[visitante] = {
-          equipo: visitante,
+          equipo: equipos?.find((e) => Number(e.id) === Number(visitante))?.nombre || `Equipo ${visitante}`,
           pj: 0,
           pg: 0,
           pe: 0,
