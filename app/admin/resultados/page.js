@@ -292,14 +292,14 @@ function agregarGoleador(partido, equipoId) {
   <div style={{ marginTop: '8px' }}>
     <button
       type="button"
-      onClick={() => agregarGoleador(partido, partido.local_id)}
+      onClick={() => agregarGoleador(partido, equipos.find(e => e.nombre === partido.local)?.id)}
     >
       + Gol {partido.local}
     </button>
 
     <button
       type="button"
-      onClick={() => agregarGoleador(partido, partido.visitante_id)}
+      onClick={() => agregarGoleador(partido, equipos.find(e => e.nombre === partido.visitante)?.id)}
       style={{ marginLeft: '10px' }}
     >
       + Gol {partido.visitante}
