@@ -39,9 +39,15 @@ equiposDivision.forEach((equipo) => {
   }
 })
 
-    const partidosDivision = (partidos || []).filter(
-      (partido) => Number(partido.division_id) === Number(divisionId)
-    )
+    const idsEquiposDivision = new Set(
+  equiposDivision.map((equipo) => Number(equipo.id))
+)
+
+const partidosDivision = (partidos || []).filter(
+  (partido) =>
+    idsEquiposDivision.has(Number(partido.local_id)) &&
+    idsEquiposDivision.has(Number(partido.visitante_id))
+)
 
     partidosDivision.forEach((partido) => {
       const local = partido.local_id
