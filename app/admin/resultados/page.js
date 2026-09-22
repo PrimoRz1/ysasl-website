@@ -9,10 +9,14 @@ export default function AdminResultadosPage() {
   const [mensaje, setMensaje] = useState('')
   const [guardandoId, setGuardandoId] = useState(null)
   const [goles, setGoles] = useState({})
-
+const [jugadores, setJugadores] = useState([])
+  const [equipos, setEquipos] = useState([])
+const [goleadores, setGoleadores] = useState({})
   useEffect(() => {
-    cargarPartidos()
-  }, [])
+  cargarPartidos()
+  cargarJugadores()
+    cargarEquipos()
+}, [])
 
   async function cargarPartidos() {
     setCargando(true)
@@ -35,6 +39,34 @@ export default function AdminResultadosPage() {
 
     setCargando(false)
   }
+
+  async function cargarJugadores() {
+  const { data, error } = await supabase
+    .from('jugadores')
+    .select('id, equipo_id, nombre')
+    .eq('activo', true)
+    .order('nombre', { ascending: true })
+
+  if (error) {
+    console.error(error)
+    return
+  }
+
+  setJugadores(data || [])
+}
+  async function cargarEquipos() {
+  const { data, error } = await supabase
+    .from('equipos')
+    .select('id, nombre')
+    .eq('activo', true)
+
+  if (error) {
+    console.error(error)
+    return
+  }
+
+  setEquipos(data || [])
+}
 
   function cambiarGol(partidoId, tipo, valor) {
     if (valor !== '' && Number(valor) < 0) return
@@ -83,7 +115,15 @@ export default function AdminResultadosPage() {
     }
 
     setMensaje('Resultado guardado correctamente.')
-    setGuardandoId(null)
+
+const goleadoresGuardados = await guardarGoleadores(partido)
+
+if (!goleadoresGuardados) {
+  setGuardandoId(null)
+  return
+}
+
+setGuardandoId(null)
 
     setGoles((actual) => {
       const copia = { ...actual }
@@ -93,7 +133,61 @@ export default function AdminResultadosPage() {
 
     await cargarPartidos()
   }
+async function guardarGoleadores(partido) {
+  const golesPartido = goleadores[partido.id] || []
 
+  // Primero borramos los goles anteriores de este partido
+  const { error: errorBorrar } = await supabase
+    .from('eventos_partido')
+    .delete()
+    .eq('partido_id', partido.id)
+    .eq('tipo', 'gol')
+
+  if (errorBorrar) {
+    console.error(errorBorrar)
+    setMensaje('Error al actualizar los goleadores.')
+    return false
+  }
+
+  // Guardamos los goleadores seleccionados
+  if (golesPartido.length > 0) {
+    const registros = golesPartido.map((gol) => ({
+      partido_id: partido.id,
+      jugador_id: Number(gol.jugador_id),
+      equipo_id: Number(gol.equipo_id),
+      tipo: 'gol'
+    }))
+
+    const { error: errorInsertar } = await supabase
+      .from('eventos_partido')
+      .insert(registros)
+
+    if (errorInsertar) {
+      console.error(errorInsertar)
+      setMensaje('Error al guardar los goleadores.')
+      return false
+    }
+  }
+
+  return true
+}
+function agregarGoleador(partido, equipoId) {
+  setGoleadores((actual) => {
+    const lista = actual[partido.id] || []
+
+    return {
+      ...actual,
+      [partido.id]: [
+        ...lista,
+        {
+          jugador_id: '',
+          equipo_id: equipoId,
+        },
+      ],
+    }
+  })
+}
+  
   return (
     <main
       style={{
@@ -192,7 +286,61 @@ export default function AdminResultadosPage() {
 
                 <strong>{partido.visitante}</strong>
 
-                <button
+                <div style={{ marginTop: '15px', marginBottom: '15px' }}>
+  <strong>Goleadores:</strong>
+
+  <div style={{ marginTop: '8px' }}>
+    <button
+      type="button"
+      onClick={() => agregarGoleador(partido, partido.local_id)}
+    >
+      + Gol {partido.local}
+    </button>
+
+    <button
+      type="button"
+      onClick={() => agregarGoleador(partido, partido.visitante_id)}
+      style={{ marginLeft: '10px' }}
+    >
+      + Gol {partido.visitante}
+    </button>
+  </div>
+{(goleadores[partido.id] || []).map((gol, index) => (
+  <div key={index} style={{ marginTop: '8px' }}>
+    <select
+      value={gol.jugador_id}
+      onChange={(e) => {
+        const copia = [...(goleadores[partido.id] || [])]
+        copia[index] = {
+          ...copia[index],
+          jugador_id: e.target.value,
+        }
+
+        setGoleadores((actual) => ({
+          ...actual,
+          [partido.id]: copia,
+        }))
+      }}
+    >
+      <option value="">Selecciona goleador</option>
+
+      {jugadores
+        .filter(
+          (jugador) =>
+            Number(jugador.equipo_id) === Number(gol.equipo_id)
+        )
+        .map((jugador) => (
+          <option key={jugador.id} value={jugador.id}>
+            {jugador.nombre}
+          </option>
+        ))}
+    </select>
+  </div>
+))}
+      
+      </div>
+                  
+                  <button
                   onClick={() => guardarResultado(partido)}
                   disabled={guardandoId === partido.id}
                   style={{
