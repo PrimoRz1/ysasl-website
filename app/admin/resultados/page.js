@@ -131,8 +131,105 @@ setGuardandoId(null)
       return copia
     })
 
+    const suspensionesProcesadas = await procesarSuspensiones(partido)
+
+if (!suspensionesProcesadas) {
+  setMensaje('El resultado se guardó, pero hubo un error al procesar las suspensiones.')
+}
     await cargarPartidos()
   }
+
+async function procesarSuspensiones(partido) {
+  // Buscar jugadores de los dos equipos que jugaron este partido
+  const { data: jugadoresPartido, error: jugadoresError } = await supabase
+    .from('jugadores')
+    .select('id, equipo_id')
+    .in('equipo_id', [partido.local_id, partido.visitante_id])
+
+  if (jugadoresError) {
+    console.error('Error al buscar jugadores para suspensiones:', jugadoresError)
+    return false
+  }
+
+  if (!jugadoresPartido || jugadoresPartido.length === 0) {
+    return true
+  }
+
+  const jugadoresIds = jugadoresPartido.map((jugador) => jugador.id)
+
+  // Buscar suspensiones activas de esos jugadores
+  const { data: suspensiones, error: suspensionesError } = await supabase
+    .from('suspensiones')
+    .select('id, jugador_id, partidos_suspension, partidos_cumplidos, activa')
+    .in('jugador_id', jugadoresIds)
+    .eq('activa', true)
+
+  if (suspensionesError) {
+    console.error('Error al buscar suspensiones:', suspensionesError)
+    return false
+  }
+
+  if (!suspensiones || suspensiones.length === 0) {
+    return true
+  }
+
+  for (const suspension of suspensiones) {
+    const jugador = jugadoresPartido.find(
+      (j) => j.id === suspension.jugador_id
+    )
+
+    if (!jugador) continue
+
+    // Verificar que este partido no haya contado antes para este jugador
+    const { data: eventoExistente, error: eventoError } = await supabase
+      .from('eventos_partido')
+      .select('id')
+      .eq('partido_id', partido.id)
+      .eq('jugador_id', suspension.jugador_id)
+      .eq('tipo', 'suspension_cumplida')
+      .maybeSingle()
+
+    if (eventoError) {
+      console.error('Error al verificar suspensión:', eventoError)
+      return false
+    }
+
+    if (eventoExistente) continue
+
+    const nuevosCumplidos = Number(suspension.partidos_cumplidos || 0) + 1
+    const suspensionTerminada =
+      nuevosCumplidos >= Number(suspension.partidos_suspension)
+
+    const { error: actualizarError } = await supabase
+      .from('suspensiones')
+      .update({
+        partidos_cumplidos: nuevosCumplidos,
+        activa: !suspensionTerminada,
+      })
+      .eq('id', suspension.id)
+
+    if (actualizarError) {
+      console.error('Error al actualizar suspensión:', actualizarError)
+      return false
+    }
+
+    const { error: registrarError } = await supabase
+      .from('eventos_partido')
+      .insert({
+        partido_id: partido.id,
+        jugador_id: suspension.jugador_id,
+        equipo_id: jugador.equipo_id,
+        tipo: 'suspension_cumplida',
+      })
+
+    if (registrarError) {
+      console.error('Error al registrar partido de suspensión:', registrarError)
+      return false
+    }
+  }
+
+  return true
+}  
 async function guardarGoleadores(partido) {
   const golesPartido = goleadores[partido.id] || []
 
