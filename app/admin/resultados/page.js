@@ -12,6 +12,7 @@ export default function AdminResultadosPage() {
 const [jugadores, setJugadores] = useState([])
   const [equipos, setEquipos] = useState([])
 const [goleadores, setGoleadores] = useState({})
+  const [tarjetas, setTarjetas] = useState({})
   useEffect(() => {
   cargarPartidos()
   cargarJugadores()
@@ -130,7 +131,25 @@ setGuardandoId(null)
       delete copia[partido.id]
       return copia
     })
+const tarjetasGuardadas = await guardarTarjetas(partido)
 
+if (!tarjetasGuardadas) {
+  setGuardandoId(null)
+  return
+}
+
+setTarjetas((actual) => {
+  const copia = { ...actual }
+  delete copia[partido.id]
+  return copia
+})
+    const tarjetasProcesadas = await procesarTarjetas(partido)
+
+if (!tarjetasProcesadas) {
+  setMensaje('El resultado se guardó, pero hubo un error al procesar las tarjetas.')
+  setGuardandoId(null)
+  return
+}
     const suspensionesProcesadas = await procesarSuspensiones(partido)
 
 if (!suspensionesProcesadas) {
@@ -160,7 +179,7 @@ async function procesarSuspensiones(partido) {
   // Buscar suspensiones activas de esos jugadores
   const { data: suspensiones, error: suspensionesError } = await supabase
     .from('suspensiones')
-    .select('id, jugador_id, partidos_suspension, partidos_cumplidos, activa')
+    .select('id, jugador_id, partidos_suspension, partidos_cumplidos, activa, fecha')
     .in('jugador_id', jugadoresIds)
     .eq('activa', true)
 
@@ -179,6 +198,10 @@ async function procesarSuspensiones(partido) {
     )
 
     if (!jugador) continue
+    // No contar partidos anteriores a la fecha de la suspensión
+if (suspension.fecha && partido.fecha && partido.fecha < suspension.fecha) {
+  continue
+}
 
     // Verificar que este partido no haya contado antes para este jugador
     const { data: eventoExistente, error: eventoError } = await supabase
@@ -268,6 +291,114 @@ async function guardarGoleadores(partido) {
 
   return true
 }
+  async function guardarTarjetas(partido) {
+  const tarjetasPartido = tarjetas[partido.id] || []
+
+  // Primero borramos las tarjetas anteriores de este partido
+  const { error: errorBorrar } = await supabase
+    .from('eventos_partido')
+    .delete()
+    .eq('partido_id', partido.id)
+    .in('tipo', ['amarilla', 'roja'])
+
+  if (errorBorrar) {
+    console.error(errorBorrar)
+    setMensaje('Error al actualizar las tarjetas.')
+    return false
+  }
+
+  // Guardamos las tarjetas seleccionadas
+  if (tarjetasPartido.length > 0) {
+    const registros = tarjetasPartido
+      .filter((tarjeta) => tarjeta.jugador_id)
+      .map((tarjeta) => ({
+        partido_id: partido.id,
+        jugador_id: Number(tarjeta.jugador_id),
+        equipo_id: Number(tarjeta.equipo_id),
+        tipo: tarjeta.tipo,
+      }))
+
+    if (registros.length > 0) {
+      const { error: errorInsertar } = await supabase
+        .from('eventos_partido')
+        .insert(registros)
+
+      if (errorInsertar) {
+        console.error(errorInsertar)
+        setMensaje('Error al guardar las tarjetas.')
+        return false
+      }
+    }
+  }
+
+  return true
+}
+  async function procesarTarjetas(partido) {
+  const tarjetasPartido = (tarjetas[partido.id] || []).filter(
+    (tarjeta) => tarjeta.jugador_id
+  )
+
+  const tarjetasRojas = tarjetasPartido.filter(
+    (tarjeta) => tarjeta.tipo === 'roja'
+  )
+
+  for (const tarjeta of tarjetasRojas) {
+    const { error } = await supabase
+      .from('suspensiones')
+      .insert({
+        jugador_id: Number(tarjeta.jugador_id),
+        motivo: 'tarjeta roja',
+        partidos_suspension: 1,
+        partidos_cumplidos: 0,
+        activa: true,
+        fecha: partido.fecha,
+      })
+
+    if (error) {
+      console.error('Error al crear suspensión por tarjeta roja:', error)
+      return false
+    }
+  }
+// Revisar acumulacion de 3 tarjetas amarillas
+const tarjetasAmarillas = tarjetasPartido.filter(
+  (tarjeta) => tarjeta.tipo === 'amarilla'
+)
+
+for (const tarjeta of tarjetasAmarillas) {
+  const { count, error } = await supabase
+    .from('eventos_partido')
+    .select('*', { count: 'exact', head: true })
+    .eq('jugador_id', Number(tarjeta.jugador_id))
+    .eq('tipo', 'amarilla')
+
+  if (error) {
+    console.error('Error al contar tarjetas amarillas:', error)
+    return false
+  }
+
+  if (count > 0 && count % 3 === 0) {
+    const { error: suspensionError } = await supabase
+      .from('suspensiones')
+      .insert({
+        jugador_id: Number(tarjeta.jugador_id),
+        motivo: '3 tarjetas amarillas',
+        partidos_suspension: 1,
+        partidos_cumplidos: 0,
+        activa: true,
+        fecha: partido.fecha,
+      })
+
+    if (suspensionError) {
+      console.error(
+        'Error al crear suspensión por acumulación de amarillas:',
+        suspensionError
+      )
+      return false
+    }
+  }
+}
+  return true
+}
 function agregarGoleador(partido, equipoId) {
   setGoleadores((actual) => {
     const lista = actual[partido.id] || []
@@ -279,6 +410,23 @@ function agregarGoleador(partido, equipoId) {
         {
           jugador_id: '',
           equipo_id: equipoId,
+        },
+      ],
+    }
+  })
+}
+  function agregarTarjeta(partido, equipoId, tipo) {
+  setTarjetas((actual) => {
+    const lista = actual[partido.id] || []
+
+    return {
+      ...actual,
+      [partido.id]: [
+        ...lista,
+        {
+          jugador_id: '',
+          equipo_id: equipoId,
+          tipo: tipo,
         },
       ],
     }
@@ -401,6 +549,37 @@ function agregarGoleador(partido, equipoId) {
     >
       + Gol {partido.visitante}
     </button>
+      <button
+  type="button"
+  onClick={() => agregarTarjeta(partido, equipos.find(e => e.nombre === partido.local)?.id, 'amarilla')}
+  style={{ marginLeft: '10px' }}
+>
+  🟨 Amarilla {partido.local}
+</button>
+
+<button
+  type="button"
+  onClick={() => agregarTarjeta(partido, equipos.find(e => e.nombre === partido.local)?.id, 'roja')}
+  style={{ marginLeft: '10px' }}
+>
+  🟥 Roja {partido.local}
+</button>
+
+<button
+  type="button"
+  onClick={() => agregarTarjeta(partido, equipos.find(e => e.nombre === partido.visitante)?.id, 'amarilla')}
+  style={{ marginLeft: '10px' }}
+>
+  🟨 Amarilla {partido.visitante}
+</button>
+
+<button
+  type="button"
+  onClick={() => agregarTarjeta(partido, equipos.find(e => e.nombre === partido.visitante)?.id, 'roja')}
+  style={{ marginLeft: '10px' }}
+>
+  🟥 Roja {partido.visitante}
+</button>
   </div>
 {(goleadores[partido.id] || []).map((gol, index) => (
   <div key={index} style={{ marginTop: '8px' }}>
@@ -425,6 +604,43 @@ function agregarGoleador(partido, equipoId) {
         .filter(
           (jugador) =>
             Number(jugador.equipo_id) === Number(gol.equipo_id)
+        )
+        .map((jugador) => (
+          <option key={jugador.id} value={jugador.id}>
+            {jugador.numero ? `#${jugador.numero} - ${jugador.nombre}` : jugador.nombre}
+          </option>
+        ))}
+    </select>
+  </div>
+))}
+  {(tarjetas[partido.id] || []).map((tarjeta, index) => (
+  <div key={index} style={{ marginTop: '8px' }}>
+    <span>
+      {tarjeta.tipo === 'amarilla' ? '🟨 Amarilla' : '🟥 Roja'}:{' '}
+    </span>
+
+    <select
+      value={tarjeta.jugador_id}
+      onChange={(e) => {
+        const copia = [...(tarjetas[partido.id] || [])]
+
+        copia[index] = {
+          ...copia[index],
+          jugador_id: e.target.value,
+        }
+
+        setTarjetas((actual) => ({
+          ...actual,
+          [partido.id]: copia,
+        }))
+      }}
+    >
+      <option value="">Selecciona jugador</option>
+
+      {jugadores
+        .filter(
+          (jugador) =>
+            Number(jugador.equipo_id) === Number(tarjeta.equipo_id)
         )
         .map((jugador) => (
           <option key={jugador.id} value={jugador.id}>
