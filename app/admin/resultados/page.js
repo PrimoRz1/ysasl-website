@@ -343,6 +343,22 @@ async function guardarGoleadores(partido) {
   )
 
   for (const tarjeta of tarjetasRojas) {
+    const { data: suspensionExistente, error: verificarError } = await supabase
+  .from('suspensiones')
+  .select('id')
+  .eq('jugador_id', Number(tarjeta.jugador_id))
+  .eq('motivo', 'tarjeta roja')
+  .eq('fecha', partido.fecha)
+  .maybeSingle()
+
+if (verificarError) {
+  console.error('Error al verificar suspensión por tarjeta roja:', verificarError)
+  return false
+}
+
+if (suspensionExistente) {
+  continue
+}
     const { error } = await supabase
       .from('suspensiones')
       .insert({
@@ -377,6 +393,22 @@ for (const tarjeta of tarjetasAmarillas) {
   }
 
   if (count > 0 && count % 3 === 0) {
+    const { data: suspensionAmarillasExistente, error: verificarAmarillasError } = await supabase
+  .from('suspensiones')
+  .select('id')
+  .eq('jugador_id', Number(tarjeta.jugador_id))
+  .eq('motivo', '3 tarjetas amarillas')
+  .eq('fecha', partido.fecha)
+  .maybeSingle()
+
+if (verificarAmarillasError) {
+  console.error('Error al verificar suspensión por amarillas:', verificarAmarillasError)
+  return false
+}
+
+if (suspensionAmarillasExistente) {
+  continue
+}
     const { error: suspensionError } = await supabase
       .from('suspensiones')
       .insert({
