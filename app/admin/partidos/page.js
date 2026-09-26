@@ -568,7 +568,7 @@ onChange={(e) => setHora(e.target.value)}
           )}
 
           {partido.hora && (
-            <span> — {partido.hora}</span>
+            <span> - {new Date(`2000-01-01T${partido.hora}`).toLocaleTimeString('en-US', { hour: 'numeric', minute: '2-digit' })}</span>
           )}
 <button
   type="button"
