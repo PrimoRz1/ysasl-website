@@ -87,7 +87,9 @@ export default async function Calendario() {
                           return (
                             <tr key={partido.id}>
                               <td style={celda}>
-                                {partido.fecha || 'Pendiente'}
+                                {partido.fecha
+  ? new Date(`${partido.fecha}T12:00:00`).toLocaleDateString('en-US')
+  : 'Pendiente'}
                               </td>
 
                               <td style={celda}>
