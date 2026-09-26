@@ -92,8 +92,8 @@ export default async function Calendario() {
 
                               <td style={celda}>
                                 {partido.hora
-                                  ? partido.hora.slice(0, 5)
-                                  : 'Pendiente'}
+  ? new Date(`2000-01-01T${partido.hora}`).toLocaleTimeString('en-US', { hour: 'numeric', minute: '2-digit' })
+  : 'Pendiente'}
                               </td>
 
                               <td style={celda}>
