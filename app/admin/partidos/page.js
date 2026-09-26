@@ -601,6 +601,7 @@ onChange={(e) => setHora(e.target.value)}
   <p style={{ marginTop: '15px', fontWeight: 'bold' }}>
     {mensaje}
   </p>
+)}
 {jornadaId && partidosJornada.length > 0 && (
   <button
     type="button"
