@@ -198,14 +198,37 @@ if (equipoOcupado) {
 
   setGuardando(true)
 
-  const { error } = await supabase
-  .from('partidos')
-  .update({
-    campo_id: Number(campoId),
-    fecha: fecha,
-    hora: hora
-  })
-  .eq('id', partidoEditandoId)
+  let error
+
+if (partidoEditandoId) {
+  const resultado = await supabase
+    .from('partidos')
+    .update({
+      jornada_id: Number(jornadaId),
+      local_id: Number(localId),
+      visitante_id: Number(visitanteId),
+      campo_id: Number(campoId),
+      fecha: fecha,
+      hora: hora
+    })
+    .eq('id', Number(partidoEditandoId))
+
+  error = resultado.error
+} else {
+  const resultado = await supabase
+    .from('partidos')
+    .insert({
+      jornada_id: Number(jornadaId),
+      local_id: Number(localId),
+      visitante_id: Number(visitanteId),
+      campo_id: Number(campoId),
+      fecha: fecha,
+      hora: hora,
+      estado: 'programado'
+    })
+
+  error = resultado.error
+}
 
   if (error) {
     console.error(error)
