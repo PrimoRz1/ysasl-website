@@ -147,7 +147,7 @@ function editarPartido(partido) {
 async function guardarPartido() {
   setMensaje('')
 
-  if (!divisionId || !jornadaId || !localId || !visitanteId || !campoId || !fecha || !hora) {
+  if (!divisionId || !jornadaId || !localId || !visitanteId || !fecha) {
     setMensaje('Completa todos los campos.')
     return
   }
@@ -162,12 +162,15 @@ async function guardarPartido() {
     String(partido.id) === String(partidoEditandoId)
 
   const mismaFecha = partido.fecha === fecha
-  const mismaHora =
-    String(partido.hora).slice(0, 5) === String(hora).slice(0, 5)
-  const mismoCampo =
-    Number(partido.campo_id) === Number(campoId)
+const mismaHora =
+  hora && partido.hora &&
+  String(partido.hora).slice(0, 5) === String(hora).slice(0, 5)
 
-  return !mismoPartido && mismaFecha && mismaHora && mismoCampo
+const mismoCampo =
+  campoId && partido.campo_id &&
+  Number(partido.campo_id) === Number(campoId)
+
+return !mismoPartido && mismaFecha && mismaHora && mismoCampo
 })
 
 if (conflicto) {
@@ -207,9 +210,9 @@ if (partidoEditandoId) {
       jornada_id: Number(jornadaId),
       local_id: Number(localId),
       visitante_id: Number(visitanteId),
-      campo_id: Number(campoId),
-      fecha: fecha,
-      hora: hora
+      campo_id: campoId ? Number(campoId) : null,
+fecha: fecha,
+hora: hora || null
     })
     .eq('id', Number(partidoEditandoId))
 
@@ -221,10 +224,10 @@ if (partidoEditandoId) {
       jornada_id: Number(jornadaId),
       local_id: Number(localId),
       visitante_id: Number(visitanteId),
-      campo_id: Number(campoId),
-      fecha: fecha,
-      hora: hora,
-      estado: 'programado'
+      campo_id: campoId ? Number(campoId) : null,
+fecha: fecha,
+hora: hora || null,
+estado: 'programado'
     })
 
   error = resultado.error
