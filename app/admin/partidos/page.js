@@ -125,6 +125,70 @@ function editarPartido(partido) {
   setHora(partido.hora || '')
   setMensaje('')
 }
+  async function generarHorariosCampos() {
+  setMensaje('')
+
+  if (!jornadaId) {
+    setMensaje('Selecciona una jornada.')
+    return
+  }
+
+  const partidosPendientes = partidosJornada.filter(
+    (partido) => !partido.hora || !partido.campo_id
+  )
+
+  if (partidosPendientes.length === 0) {
+    setMensaje('Todos los partidos de esta jornada ya tienen hora y campo.')
+    return
+  }
+
+  if (campos.length === 0) {
+    setMensaje('No hay campos activos disponibles.')
+    return
+  }
+
+  const horarios = ['09:00', '11:00', '13:00', '15:00']
+    const espaciosDisponibles = []
+
+horarios.forEach((horaDisponible) => {
+  campos.forEach((campo) => {
+    espaciosDisponibles.push({
+      hora: horaDisponible,
+      campo_id: campo.id
+    })
+  })
+})
+    const asignaciones = partidosPendientes.map((partido, index) => {
+  const espacio = espaciosDisponibles[index]
+
+  return {
+    id: partido.id,
+    hora: espacio?.hora || null,
+    campo_id: espacio?.campo_id || null
+  }
+})
+    for (const asignacion of asignaciones) {
+  if (!asignacion.hora || !asignacion.campo_id) continue
+
+  const { error } = await supabase
+    .from('partidos')
+    .update({
+      hora: asignacion.hora,
+      campo_id: asignacion.campo_id
+    })
+    .eq('id', asignacion.id)
+
+  if (error) {
+    console.error(error)
+    setMensaje('Error al generar horarios y campos.')
+    return
+  }
+}
+    await cargarPartidosJornada(jornadaId)
+
+setMensaje('Horarios y campos generados correctamente.')
+
+}
   async function eliminarPartido(id) {
   const confirmar = window.confirm('¿Seguro que quieres eliminar este partido?')
 
@@ -537,6 +601,21 @@ onChange={(e) => setHora(e.target.value)}
   <p style={{ marginTop: '15px', fontWeight: 'bold' }}>
     {mensaje}
   </p>
+{jornadaId && partidosJornada.length > 0 && (
+  <button
+    type="button"
+    onClick={generarHorariosCampos}
+    style={{
+      width: '100%',
+      padding: '12px',
+      marginTop: '15px',
+      fontWeight: 'bold',
+      cursor: 'pointer'
+    }}
+  >
+    Generar horarios y campos
+  </button>
+)}
 )}{jornadaId && partidosJornada.length > 0 && (
   <div style={{ marginTop: '25px' }}>
     <h3>Partidos de esta jornada</h3>
