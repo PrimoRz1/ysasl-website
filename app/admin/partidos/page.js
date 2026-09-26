@@ -573,6 +573,12 @@ onChange={(e) => setHora(e.target.value)}
           {partido.hora && (
             <span> - {new Date(`2000-01-01T${partido.hora}`).toLocaleTimeString('en-US', { hour: 'numeric', minute: '2-digit' })}</span>
           )}
+{partido.campo_id && (
+  <span>
+    {' — '}
+    {campos.find((campo) => Number(campo.id) === Number(partido.campo_id))?.nombre || `Campo ${partido.campo_id}`}
+  </span>
+)}
 <button
   type="button"
   onClick={() => editarPartido(partido)}
