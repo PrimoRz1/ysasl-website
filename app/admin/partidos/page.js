@@ -146,12 +146,32 @@ function editarPartido(partido) {
     setMensaje('No hay campos activos disponibles.')
     return
   }
-
-  const horarios = ['09:00', '11:00', '13:00', '15:00']
+const espaciosOcupados = partidosJornada
+  .filter((partido) => partido.hora && partido.campo_id)
+  .map((partido) => ({
+    hora: partido.hora.substring(0, 5),
+    campo_id: Number(partido.campo_id)
+  }))
+  
+    
+    
+    
+    
+    
+    
+    
+    const horarios = ['09:00', '11:00', '13:00', '15:00']
     const espaciosDisponibles = []
 
 horarios.forEach((horaDisponible) => {
   campos.forEach((campo) => {
+   const ocupado = espaciosOcupados.some(
+  (espacio) =>
+    espacio.hora === horaDisponible &&
+    espacio.campo_id === Number(campo.id)
+)
+
+if (ocupado) return
     espaciosDisponibles.push({
       hora: horaDisponible,
       campo_id: campo.id
