@@ -24,6 +24,8 @@ const [partidosJornada, setPartidosJornada] = useState([])
   const [divisionId, setDivisionId] = useState('')
   const [cargando, setCargando] = useState(true)
   const [error, setError] = useState('')
+  const [camposSeleccionados, setCamposSeleccionados] = useState([])
+const [horariosSeleccionados, setHorariosSeleccionados] = useState(['09:00', '11:00', '13:00', '15:00'])
 
   useEffect(() => {
     cargarDatos()
@@ -83,6 +85,7 @@ const [partidosJornada, setPartidosJornada] = useState([])
     setEquipos(equiposData || [])
     setJornadas(jornadasData || [])
     setCampos(camposData || [])
+    setCamposSeleccionados((camposData || []).map((campo) => Number(campo.id)))
 
     setCargando(false)
   }
@@ -142,7 +145,7 @@ function editarPartido(partido) {
     return
   }
 
-  if (campos.length === 0) {
+  if (camposSeleccionados.length === 0) {
     setMensaje('No hay campos activos disponibles.')
     return
   }
@@ -160,11 +163,17 @@ const espaciosOcupados = partidosJornada
     
     
     
-    const horarios = ['09:00', '11:00', '13:00', '15:00']
+    const horarios = horariosSeleccionados
     const espaciosDisponibles = []
+    if (horariosSeleccionados.length === 0) {
+  setMensaje('Selecciona por lo menos un horario.')
+  return
+}
 
 horarios.forEach((horaDisponible) => {
-  campos.forEach((campo) => {
+  campos
+  .filter((campo) => camposSeleccionados.includes(Number(campo.id)))
+  .forEach((campo) => {
    const ocupado = espaciosOcupados.some(
   (espacio) =>
     espacio.hora === horaDisponible &&
@@ -178,6 +187,12 @@ if (ocupado) return
     })
   })
 })
+   if (espaciosDisponibles.length < partidosPendientes.length) {
+  setMensaje(
+    `No hay suficientes espacios. Hay ${partidosPendientes.length} partidos y solamente ${espaciosDisponibles.length} combinaciones de campo y horario disponibles.`
+  )
+  return
+}
     const asignaciones = partidosPendientes.map((partido, index) => {
   const espacio = espaciosDisponibles[index]
 
@@ -622,6 +637,60 @@ onChange={(e) => setHora(e.target.value)}
     {mensaje}
   </p>
 )}
+  <div style={{ marginTop: '20px', marginBottom: '10px' }}>
+  <strong>Horarios disponibles:</strong>
+
+  {['09:00', '11:00', '13:00', '15:00'].map((horario) => (
+    <label key={horario} style={{ marginLeft: '15px' }}>
+      <input
+        type="checkbox"
+        checked={horariosSeleccionados.includes(horario)}
+        onChange={(e) => {
+          if (e.target.checked) {
+            setHorariosSeleccionados([...horariosSeleccionados, horario])
+          } else {
+            setHorariosSeleccionados(
+              horariosSeleccionados.filter((h) => h !== horario)
+            )
+          }
+        }}
+      />
+      {' '}
+      {horario === '09:00'
+        ? '9:00 AM'
+        : horario === '11:00'
+        ? '11:00 AM'
+        : horario === '13:00'
+        ? '1:00 PM'
+        : '3:00 PM'}
+    </label>
+  ))}
+</div>
+<div style={{ marginTop: '10px', marginBottom: '10px' }}>
+  <strong>Campos disponibles:</strong>
+
+  {campos.map((campo) => (
+    <label key={campo.id} style={{ marginLeft: '15px' }}>
+      <input
+        type="checkbox"
+        checked={camposSeleccionados.includes(Number(campo.id))}
+        onChange={(e) => {
+          const campoId = Number(campo.id)
+
+          if (e.target.checked) {
+            setCamposSeleccionados([...camposSeleccionados, campoId])
+          } else {
+            setCamposSeleccionados(
+              camposSeleccionados.filter((id) => id !== campoId)
+            )
+          }
+        }}
+      />
+      {' '}
+      Campo {campo.numero}
+    </label>
+  ))}
+</div>
 {jornadaId && partidosJornada.length > 0 && (
   <button
     type="button"
