@@ -582,9 +582,18 @@ function agregarGoleador(partido, equipoId) {
       return false
     }
 
-    if (jornadaId && Number(partido.jornada_id) !== Number(jornadaId)) {
-      return false
-    }
+    if (jornadaId) {
+  const jornadaSeleccionada = jornadas.find(
+    (jornada) => Number(jornada.id) === Number(jornadaId)
+  )
+
+  if (
+    jornadaSeleccionada &&
+    Number(partido.jornada) !== Number(jornadaSeleccionada.numero)
+  ) {
+    return false
+  }
+}
 
     return true
   })
