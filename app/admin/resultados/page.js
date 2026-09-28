@@ -13,10 +13,15 @@ const [jugadores, setJugadores] = useState([])
   const [equipos, setEquipos] = useState([])
 const [goleadores, setGoleadores] = useState({})
   const [tarjetas, setTarjetas] = useState({})
+  const [divisiones, setDivisiones] = useState([])
+const [divisionId, setDivisionId] = useState('')
+const [jornadas, setJornadas] = useState([])
+const [jornadaId, setJornadaId] = useState('')
   useEffect(() => {
   cargarPartidos()
   cargarJugadores()
     cargarEquipos()
+    cargarDivisiones()
 }, [])
 
   async function cargarPartidos() {
@@ -40,6 +45,20 @@ const [goleadores, setGoleadores] = useState({})
 
     setCargando(false)
   }
+
+  async function cargarDivisiones() {
+  const { data, error } = await supabase
+    .from('divisiones')
+    .select('id, nombre')
+    .order('orden', { ascending: true })
+
+  if (error) {
+    console.error(error)
+    return
+  }
+
+  setDivisiones(data || [])
+}
 
   async function cargarJugadores() {
   const { data, error } = await supabase
@@ -67,6 +86,29 @@ const [goleadores, setGoleadores] = useState({})
   }
 
   setEquipos(data || [])
+}
+
+  async function cargarJornadas(division) {
+  if (!division) {
+    setJornadas([])
+    setJornadaId('')
+    return
+  }
+
+  const { data, error } = await supabase
+    .from('jornadas')
+    .select('id, numero, fecha')
+    .eq('division_id', division)
+    .order('numero', { ascending: true })
+
+  if (error) {
+    console.error(error)
+    setJornadas([])
+    return
+  }
+
+  setJornadas(data || [])
+  setJornadaId('')
 }
 
   function cambiarGol(partidoId, tipo, valor) {
@@ -480,6 +522,48 @@ function agregarGoleador(partido, equipoId) {
         Captura el marcador final de los partidos.
       </p>
 
+<div style={{ marginTop: '20px', marginBottom: '25px' }}>
+  <label>
+    <strong>División:</strong>
+  </label>
+
+  <select
+    value={divisionId}
+    onChange={(e) => {
+      const valor = e.target.value
+      setDivisionId(valor)
+      cargarJornadas(valor)
+    }}
+    style={{ marginLeft: '10px', marginRight: '25px' }}
+  >
+    <option value="">Seleccionar división</option>
+    {divisiones.map((division) => (
+      <option key={division.id} value={division.id}>
+        {division.nombre}
+      </option>
+    ))}
+  </select>
+
+  <label>
+    <strong>Jornada:</strong>
+  </label>
+
+  <select
+    value={jornadaId}
+    onChange={(e) => setJornadaId(e.target.value)}
+    disabled={!divisionId}
+    style={{ marginLeft: '10px' }}
+  >
+    <option value="">Seleccionar jornada</option>
+    {jornadas.map((jornada) => (
+      <option key={jornada.id} value={jornada.id}>
+        Jornada {jornada.numero}
+        {jornada.fecha ? ` — ${jornada.fecha}` : ''}
+      </option>
+    ))}
+  </select>
+</div>
+
       {mensaje && (
         <p style={{ fontWeight: 'bold', marginTop: '20px' }}>
           {mensaje}
@@ -492,7 +576,19 @@ function agregarGoleador(partido, equipoId) {
         <p>No hay partidos pendientes.</p>
       ) : (
         <div style={{ marginTop: '25px' }}>
-          {partidos.map((partido) => (
+          {partidos
+  .filter((partido) => {
+    if (divisionId && Number(partido.division_id) !== Number(divisionId)) {
+      return false
+    }
+
+    if (jornadaId && Number(partido.jornada_id) !== Number(jornadaId)) {
+      return false
+    }
+
+    return true
+  })
+  .map((partido) => (
             <div
               key={partido.id}
               style={{
