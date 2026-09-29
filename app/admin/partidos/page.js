@@ -194,12 +194,20 @@ if (ocupado) return
   return
 }
     const asignaciones = partidosPendientes.map((partido, index) => {
-  const espacio = espaciosDisponibles[index]
+  const numeroHorarios = horarios.length
+  const numeroCampos = camposSeleccionados.length
+
+  const horarioIndex = Math.floor(index / numeroCampos) % numeroHorarios
+const campoIndex = index % numeroCampos
+
+  const horaAsignada = horarios[horarioIndex]
+  const campoAsignado = campos
+    .filter((campo) => camposSeleccionados.includes(Number(campo.id)))[campoIndex]
 
   return {
     id: partido.id,
-    hora: espacio?.hora || null,
-    campo_id: espacio?.campo_id || null
+    hora: horaAsignada || null,
+    campo_id: campoAsignado?.id || null
   }
 })
     for (const asignacion of asignaciones) {
