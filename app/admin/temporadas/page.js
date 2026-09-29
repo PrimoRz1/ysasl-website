@@ -5,6 +5,9 @@ import { supabase } from '../../../lib/supabase'
 
 export default function TemporadasPage() {
   const [temporadas, setTemporadas] = useState([])
+  const [divisiones, setDivisiones] = useState([])
+const [nuevaDivision, setNuevaDivision] = useState('')
+const [temporadaSeleccionada, setTemporadaSeleccionada] = useState(null)
   const [mostrarFormulario, setMostrarFormulario] = useState(false)
   const [nombre, setNombre] = useState('')
   const [fechaInicio, setFechaInicio] = useState('')
@@ -14,7 +17,36 @@ export default function TemporadasPage() {
 
   useEffect(() => {
     cargarTemporadas()
-  }, [])
+    cargarDivisiones()
+    }, [])
+    async function crearDivision(temporadaId) {
+  if (!nuevaDivision.trim()) {
+    setMensaje('Escribe el nombre de la división.')
+    return
+  }
+
+  const divisionesDelTorneo = divisiones.filter(
+    (division) => division.temporada_id === temporadaId
+  )
+
+  const { error } = await supabase
+    .from('divisiones')
+    .insert({
+      temporada_id: temporadaId,
+      nombre: nuevaDivision.trim(),
+      orden: divisionesDelTorneo.length + 1,
+    })
+
+  if (error) {
+    console.error(error)
+    setMensaje('No se pudo crear la división.')
+    return
+  }
+
+  setNuevaDivision('')
+  setMensaje('División creada correctamente.')
+  await cargarDivisiones()
+}
 
   async function cargarTemporadas() {
     const { data, error } = await supabase
@@ -29,6 +61,19 @@ export default function TemporadasPage() {
 
     setTemporadas(data || [])
   }
+  async function cargarDivisiones() {
+  const { data, error } = await supabase
+    .from('divisiones')
+    .select('id, nombre, temporada_id, orden')
+    .order('orden')
+
+  if (error) {
+    console.error(error)
+    return
+  }
+
+  setDivisiones(data || [])
+}
 
   async function crearTemporada(e) {
     e.preventDefault()
@@ -199,7 +244,40 @@ export default function TemporadasPage() {
               {' — '}
               Final: {temporada.fecha_fin || 'Sin fecha'}
             </div>
-          </div>
+          <div style={{ marginTop: '15px' }}>
+  <strong>Divisiones</strong>
+
+  {divisiones
+    .filter((division) => division.temporada_id === temporada.id)
+    .map((division) => (
+      <div key={division.id} style={{ marginTop: '5px' }}>
+        {division.nombre}
+      </div>
+    ))}
+
+  <div style={{ marginTop: '10px' }}>
+    <input
+      type="text"
+      placeholder="Ejemplo: Tercera División"
+      value={temporadaSeleccionada === temporada.id ? nuevaDivision : ''}
+      onFocus={() => setTemporadaSeleccionada(temporada.id)}
+      onChange={(e) => {
+        setTemporadaSeleccionada(temporada.id)
+        setNuevaDivision(e.target.value)
+      }}
+      style={{ padding: '8px', marginRight: '8px' }}
+    />
+
+    <button
+      type="button"
+      onClick={() => crearDivision(temporada.id)}
+      style={{ padding: '8px 12px', cursor: 'pointer' }}
+    >
+      + Agregar división
+    </button>
+  </div>
+</div>
+              </div>
         ))
       )}
     </main>
