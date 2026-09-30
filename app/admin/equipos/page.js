@@ -26,9 +26,11 @@ export default function AdminEquiposPage() {
       .select('id, nombre, temporada_id')
       .order('orden')
 
-    const { data: inscripcionesData } = await supabase
+    const { data: inscripcionesData, error: inscripcionesError } = await supabase
       .from('inscripciones_equipo')
       .select('id, equipo_id, division_id, activo')
+    console.log('INSCRIPCIONES:', inscripcionesData)
+console.log('ERROR INSCRIPCIONES:', inscripcionesError)
 
     setEquipos(equiposData || [])
     setDivisiones(divisionesData || [])
