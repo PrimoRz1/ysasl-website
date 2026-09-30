@@ -6,6 +6,7 @@ import { supabase } from '../../../lib/supabase'
 export default function AdminEquiposPage() {
   const [equipos, setEquipos] = useState([])
   const [divisiones, setDivisiones] = useState([])
+  const [temporadas, setTemporadas] = useState([])
   const [inscripciones, setInscripciones] = useState([])
   const [nombre, setNombre] = useState('')
   const [divisionId, setDivisionId] = useState('')
@@ -25,6 +26,10 @@ export default function AdminEquiposPage() {
       .from('divisiones')
       .select('id, nombre, temporada_id')
       .order('orden')
+    const { data: temporadasData } = await supabase
+  .from('temporadas')
+  .select('id, nombre, activa')
+  .order('id', { ascending: false })
 
     const { data: inscripcionesData, error: inscripcionesError } = await supabase
       .from('inscripciones_equipo')
@@ -33,6 +38,7 @@ export default function AdminEquiposPage() {
 
     setEquipos(equiposData || [])
     setDivisiones(divisionesData || [])
+    setTemporadas(temporadasData || [])
     setInscripciones(inscripcionesData || [])
   }
 
@@ -123,11 +129,18 @@ export default function AdminEquiposPage() {
         >
           <option value="">Seleccionar división</option>
 
-          {divisiones.map((division) => (
-            <option key={division.id} value={division.id}>
-              {division.nombre}
-            </option>
-          ))}
+          {divisiones.map((division) => {
+  const temporada = temporadas.find(
+    (t) => t.id === division.temporada_id
+  )
+
+  return (
+    <option key={division.id} value={division.id}>
+      {temporada ? `${temporada.nombre} — ` : ''}
+      {division.nombre}
+    </option>
+  )
+})}
         </select>
 
         <button
