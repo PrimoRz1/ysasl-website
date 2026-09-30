@@ -11,7 +11,6 @@ const [temporadaSeleccionada, setTemporadaSeleccionada] = useState(null)
   const [mostrarFormulario, setMostrarFormulario] = useState(false)
   const [nombre, setNombre] = useState('')
   const [fechaInicio, setFechaInicio] = useState('')
-  const [fechaFin, setFechaFin] = useState('')
   const [mensaje, setMensaje] = useState('')
   const [guardando, setGuardando] = useState(false)
 
@@ -115,7 +114,7 @@ async function eliminarDivision(division) {
       .insert({
         nombre: nombre.trim(),
         fecha_inicio: fechaInicio || null,
-        fecha_fin: fechaFin || null,
+        
         activa: false
       })
 
@@ -129,7 +128,7 @@ async function eliminarDivision(division) {
 
     setNombre('')
     setFechaInicio('')
-    setFechaFin('')
+    
     setMostrarFormulario(false)
     setMensaje('Torneo creado correctamente.')
 
@@ -204,22 +203,7 @@ async function eliminarDivision(division) {
             />
           </div>
 
-          <div style={{ marginBottom: '15px' }}>
-            <label>
-              <strong>Fecha final</strong>
-            </label>
-
-            <input
-              type="date"
-              value={fechaFin}
-              onChange={(e) => setFechaFin(e.target.value)}
-              style={{
-                display: 'block',
-                padding: '10px',
-                marginTop: '5px'
-              }}
-            />
-          </div>
+          
 
           <button
             type="submit"
