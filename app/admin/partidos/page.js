@@ -7,6 +7,7 @@ import { supabase } from '../../../lib/supabase'
 export default function AdminPartidosPage() {
   const router = useRouter()
 
+  const [temporadas, setTemporadas] = useState([])
   const [divisiones, setDivisiones] = useState([])
   const [jornadaId, setJornadaId] = useState('')
 const [localId, setLocalId] = useState('')
@@ -17,6 +18,7 @@ const [hora, setHora] = useState('')
 const [guardando, setGuardando] = useState(false)
 const [mensaje, setMensaje] = useState('')
   const [equipos, setEquipos] = useState([])
+  const [inscripciones, setInscripciones] = useState([])
   const [jornadas, setJornadas] = useState([])
   const [campos, setCampos] = useState([])
 const [partidosJornada, setPartidosJornada] = useState([])
@@ -36,13 +38,19 @@ const [horariosSeleccionados, setHorariosSeleccionados] = useState(['09:00', '11
     setError('')
 
     const [
+      { data: temporadasData, error: temporadasError },
       { data: divisionesData, error: divisionesError },
       { data: equiposData, error: equiposError },
+      { data: inscripcionesData, error: inscripcionesError },
       { data: jornadasData, error: jornadasError },
       { data: camposData, error: camposError }
     ] = await Promise.all([
       supabase
-        .from('divisiones')
+      supabase
+  .from('temporadas')
+  .select('id, nombre, activa')
+  .order('id'),  
+      .from('divisiones')
         .select('*')
         .order('id'),
 
@@ -50,6 +58,10 @@ const [horariosSeleccionados, setHorariosSeleccionados] = useState(['09:00', '11
         .from('equipos')
         .select('id, nombre, division_id')
         .order('nombre'),
+      supabase
+  .from('inscripciones_equipo')
+  .select('equipo_id, division_id, activo')
+  .eq('activo', true),
 
       supabase
         .from('jornadas')
@@ -64,12 +76,15 @@ const [horariosSeleccionados, setHorariosSeleccionados] = useState(['09:00', '11
     ])
 
     if (
+      temporadasError ||
       divisionesError ||
       equiposError ||
+      inscripcionesError ||
       jornadasError ||
       camposError
     ) {
       console.error({
+        temporadasError,
         divisionesError,
         equiposError,
         jornadasError,
@@ -81,8 +96,10 @@ const [horariosSeleccionados, setHorariosSeleccionados] = useState(['09:00', '11
       return
     }
 
+    setTemporadas(temporadasData || [])
     setDivisiones(divisionesData || [])
     setEquipos(equiposData || [])
+    setInscripciones(inscripcionesData || [])
     setJornadas(jornadasData || [])
     setCampos(camposData || [])
     setCamposSeleccionados((camposData || []).map((campo) => Number(campo.id)))
@@ -425,7 +442,9 @@ await cargarPartidosJornada(jornadaId)
                   key={division.id}
                   value={division.id}
                 >
-                  {division.nombre}
+                  {`${temporadas.find(
+  (temporada) => Number(temporada.id) === Number(division.temporada_id)
+)?.nombre || 'Sin temporada'} — ${division.nombre}`}
                 </option>
               ))}
             </select>
@@ -496,7 +515,13 @@ onChange={(e) => setLocalId(e.target.value)}
               </option>
 
               {equipos
-  .filter((equipo) => String(equipo.division_id) === String(divisionId))
+  .filter((equipo) =>
+  inscripciones.some(
+    (inscripcion) =>
+      Number(inscripcion.equipo_id) === Number(equipo.id) &&
+      Number(inscripcion.division_id) === Number(divisionId)
+  )
+)
   .map((equipo) => (
                 <option
                   key={equipo.id}
@@ -531,7 +556,13 @@ onChange={(e) => setVisitanteId(e.target.value)}
               </option>
 
               {equipos
-  .filter((equipo) => String(equipo.division_id) === String(divisionId))
+  .filter((equipo) =>
+  inscripciones.some(
+    (inscripcion) =>
+      Number(inscripcion.equipo_id) === Number(equipo.id) &&
+      Number(inscripcion.division_id) === Number(divisionId)
+  )
+)
   .map((equipo) => (
     <option
       key={equipo.id}
