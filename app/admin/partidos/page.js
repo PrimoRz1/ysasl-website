@@ -46,7 +46,6 @@ const [horariosSeleccionados, setHorariosSeleccionados] = useState(['09:00', '11
       { data: camposData, error: camposError }
     ] = await Promise.all([
       supabase
-      supabase
   .from('temporadas')
   .select('id, nombre, activa')
   .order('id'),  
