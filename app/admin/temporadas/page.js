@@ -48,6 +48,30 @@ const [temporadaSeleccionada, setTemporadaSeleccionada] = useState(null)
   await cargarDivisiones()
 }
 
+async function eliminarDivision(division) {
+  const confirmar = window.confirm(
+    `¿Seguro que deseas eliminar "${division.nombre}"?`
+  )
+
+  if (!confirmar) return
+
+  setMensaje('')
+
+  const { error } = await supabase
+    .from('divisiones')
+    .delete()
+    .eq('id', division.id)
+
+  if (error) {
+    console.error(error)
+    setMensaje('No se pudo eliminar la división.')
+    return
+  }
+
+  setMensaje('División eliminada correctamente.')
+  await cargarDivisiones()
+}
+  
   async function cargarTemporadas() {
     const { data, error } = await supabase
       .from('temporadas')
@@ -250,9 +274,20 @@ const [temporadaSeleccionada, setTemporadaSeleccionada] = useState(null)
   {divisiones
     .filter((division) => division.temporada_id === temporada.id)
     .map((division) => (
-      <div key={division.id} style={{ marginTop: '5px' }}>
-        {division.nombre}
-      </div>
+      <div
+  key={division.id}
+  style={{ marginTop: '5px', display: 'flex', alignItems: 'center', gap: '10px' }}
+>
+  <span>{division.nombre}</span>
+
+  <button
+    type="button"
+    onClick={() => eliminarDivision(division)}
+    style={{ cursor: 'pointer' }}
+  >
+    Eliminar
+  </button>
+</div>
     ))}
 
   <div style={{ marginTop: '10px' }}>
