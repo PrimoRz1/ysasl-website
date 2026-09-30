@@ -49,7 +49,8 @@ const [horariosSeleccionados, setHorariosSeleccionados] = useState(['09:00', '11
   .from('temporadas')
   .select('id, nombre, activa')
   .order('id'),  
-      .from('divisiones')
+      supabase
+  .from('divisiones')
         .select('*')
         .order('id'),
 
