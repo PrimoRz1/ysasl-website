@@ -85,18 +85,25 @@ export default function AdminEquiposPage() {
     await cargarDatos()
   }
 
-  function obtenerDivision(equipoId) {
-    const inscripcion = inscripciones.find(
-      (item) => item.equipo_id === equipoId && item.activo
-    )
+  function obtenerTorneoDivision(equipoId) {
+  const inscripcion = inscripciones.find(
+    (item) => item.equipo_id === equipoId && item.activo
+  )
 
-    if (!inscripcion) return 'Sin división'
+  if (!inscripcion) return 'Sin división'
 
-    return (
-      divisiones.find((division) => division.id === inscripcion.division_id)
-        ?.nombre || 'Sin división'
-    )
-  }
+  const division = divisiones.find(
+    (division) => division.id === inscripcion.division_id
+  )
+
+  if (!division) return 'Sin división'
+
+  const temporada = temporadas.find(
+    (temporada) => temporada.id === division.temporada_id
+  )
+
+  return `${temporada?.nombre || 'Sin torneo'} — ${division.nombre}`
+}
 
   return (
     <main style={{ maxWidth: '1000px', margin: '40px auto', padding: '20px' }}>
@@ -165,7 +172,7 @@ export default function AdminEquiposPage() {
           }}
         >
           <strong>{equipo.nombre}</strong>
-          <div>{obtenerDivision(equipo.id)}</div>
+          <div>{obtenerTorneoDivision(equipo.id)}</div>
         </div>
       ))}
     </main>
