@@ -47,7 +47,7 @@ const [horariosSeleccionados, setHorariosSeleccionados] = useState(['09:00', '11
     ] = await Promise.all([
       supabase
   .from('temporadas')
-  .select('id, nombre, activa')
+  .select('id, nombre, activa, fecha_inicio, fecha_fin')
   .order('id'),  
       supabase
   .from('divisiones')
