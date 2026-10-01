@@ -382,6 +382,69 @@ setMensaje('Horarios y campos generados correctamente.')
     setGuardando(false)
   }
 }
+async function generarHorariosCampos() {
+  setMensaje('')
+
+  if (!jornadaId) {
+    setMensaje('Selecciona una jornada.')
+    return
+  }
+
+  const pendientes = partidosJornada.filter(
+    (partido) => !partido.hora || !partido.campo_id
+  )
+
+  if (pendientes.length === 0) {
+    setMensaje('Todos los partidos de esta jornada ya tienen hora y campo.')
+    return
+  }
+
+  const espacios = []
+
+  horariosSeleccionados.forEach((horaDisponible) => {
+    camposSeleccionados.forEach((campoIdDisponible) => {
+      espacios.push({
+        hora: horaDisponible,
+        campo_id: Number(campoIdDisponible)
+      })
+    })
+  })
+
+  if (espacios.length < pendientes.length) {
+    setMensaje(
+      `No hay suficientes espacios. Hay ${pendientes.length} partidos y solamente ${espacios.length} espacios disponibles.`
+    )
+    return
+  }
+
+  setGuardando(true)
+
+  try {
+    for (let i = 0; i < pendientes.length; i++) {
+      const partido = pendientes[i]
+      const espacio = espacios[i]
+
+      const { error } = await supabase
+        .from('partidos')
+        .update({
+          hora: espacio.hora,
+          campo_id: espacio.campo_id
+        })
+        .eq('id', partido.id)
+
+      if (error) throw error
+    }
+
+    await cargarPartidosJornada(jornadaId)
+    setMensaje('Horarios y campos generados correctamente.')
+  } catch (error) {
+    console.error(error)
+    setMensaje(`Error al generar horarios y campos: ${error.message}`)
+  } finally {
+    setGuardando(false)
+  }
+}  
+  
   async function eliminarPartido(id) {
   const confirmar = window.confirm('¿Seguro que quieres eliminar este partido?')
 
