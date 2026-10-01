@@ -298,7 +298,8 @@ setMensaje('Horarios y campos generados correctamente.')
     }
 
     const totalEquipos = listaEquipos.length
-    const totalJornadas = totalEquipos - 1
+    const jornadasPorVuelta = totalEquipos - 1
+const totalJornadas = jornadasPorVuelta * 2
     const partidosPorJornada = totalEquipos / 2
 
     let rotacion = [...listaEquipos]
@@ -338,8 +339,11 @@ setMensaje('Horarios y campos generados correctamente.')
       const partidos = []
 
       for (let i = 0; i < partidosPorJornada; i++) {
-        const local = rotacion[i]
-        const visitante = rotacion[totalEquipos - 1 - i]
+        const equipoA = rotacion[i]
+const equipoB = rotacion[totalEquipos - 1 - i]
+
+const local = numeroJornada <= jornadasPorVuelta ? equipoA : equipoB
+const visitante = numeroJornada <= jornadasPorVuelta ? equipoB : equipoA
 
         // null representa descanso.
         if (local && visitante) {
@@ -364,10 +368,16 @@ setMensaje('Horarios y campos generados correctamente.')
       }
 
       // Método round-robin: dejamos fijo el primer equipo.
-      const fijo = rotacion[0]
-      const resto = rotacion.slice(1)
-      resto.unshift(resto.pop())
-      rotacion = [fijo, ...resto]
+// Al terminar la primera vuelta, reiniciamos la rotación
+// para repetir los mismos cruces con localía invertida.
+if (numeroJornada === jornadasPorVuelta) {
+  rotacion = [...listaEquipos]
+} else {
+  const fijo = rotacion[0]
+  const resto = rotacion.slice(1)
+  resto.unshift(resto.pop())
+  rotacion = [fijo, ...resto]
+}
     }
 
     setMensaje(
