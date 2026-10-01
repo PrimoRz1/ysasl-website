@@ -623,7 +623,7 @@ await cargarPartidosJornada(jornadaId)
 <div style={{ marginBottom: '25px' }}>
   <button
     type="button"
-    onClick={generarCalendarioCompleto}
+    onClick={generarCalendarioAutomatico}
     disabled={guardando || !divisionId}
     style={{
       padding: '10px 16px',
