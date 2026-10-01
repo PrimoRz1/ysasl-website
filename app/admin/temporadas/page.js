@@ -11,6 +11,7 @@ const [temporadaSeleccionada, setTemporadaSeleccionada] = useState(null)
   const [mostrarFormulario, setMostrarFormulario] = useState(false)
   const [nombre, setNombre] = useState('')
   const [fechaInicio, setFechaInicio] = useState('')
+  const [formato, setFormato] = useState('ida_vuelta')
   const [mensaje, setMensaje] = useState('')
   const [guardando, setGuardando] = useState(false)
 
@@ -74,7 +75,7 @@ async function eliminarDivision(division) {
   async function cargarTemporadas() {
     const { data, error } = await supabase
       .from('temporadas')
-      .select('id, nombre, activa, fecha_inicio, fecha_fin')
+      .select('id, nombre, activa, fecha_inicio, fecha_fin, formato')
       .order('id', { ascending: false })
 
     if (error) {
@@ -114,7 +115,7 @@ async function eliminarDivision(division) {
       .insert({
         nombre: nombre.trim(),
         fecha_inicio: fechaInicio || null,
-        
+        formato: formato,
         activa: false
       })
 
@@ -128,6 +129,7 @@ async function eliminarDivision(division) {
 
     setNombre('')
     setFechaInicio('')
+    setFormato('ida_vuelta')
     
     setMostrarFormulario(false)
     setMensaje('Torneo creado correctamente.')
@@ -202,6 +204,25 @@ async function eliminarDivision(division) {
               }}
             />
           </div>
+              <div style={{ marginBottom: '15px' }}>
+  <label>
+    <strong>Formato del torneo</strong>
+  </label>
+
+  <select
+    value={formato}
+    onChange={(e) => setFormato(e.target.value)}
+    style={{
+      display: 'block',
+      width: '100%',
+      padding: '10px',
+      marginTop: '5px'
+    }}
+  >
+    <option value="ida">Ida solamente</option>
+    <option value="ida_vuelta">Ida y vuelta</option>
+  </select>
+</div>
 
           
 
