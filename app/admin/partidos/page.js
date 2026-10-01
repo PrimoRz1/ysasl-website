@@ -241,6 +241,147 @@ if (ocupado) return
 setMensaje('Horarios y campos generados correctamente.')
 
 }
+  async function generarCalendarioAutomatico() {
+  setMensaje('')
+
+  if (!divisionId) {
+    setMensaje('Selecciona una división.')
+    return
+  }
+
+  const equiposDivision = inscripciones
+    .filter(
+      (inscripcion) =>
+        Number(inscripcion.division_id) === Number(divisionId) &&
+        inscripcion.activo
+    )
+    .map((inscripcion) =>
+      equipos.find(
+        (equipo) => Number(equipo.id) === Number(inscripcion.equipo_id)
+      )
+    )
+    .filter(Boolean)
+
+  if (equiposDivision.length < 2) {
+    setMensaje('Se necesitan por lo menos 2 equipos para generar el calendario.')
+    return
+  }
+
+  const divisionSeleccionada = divisiones.find(
+    (division) => Number(division.id) === Number(divisionId)
+  )
+
+  const temporadaSeleccionada = temporadas.find(
+    (temporada) =>
+      Number(temporada.id) === Number(divisionSeleccionada?.temporada_id)
+  )
+
+  if (!temporadaSeleccionada?.fecha_inicio) {
+    setMensaje('El torneo necesita una fecha de inicio.')
+    return
+  }
+
+  const confirmar = window.confirm(
+    `Se generará automáticamente el calendario para ${equiposDivision.length} equipos. ¿Continuar?`
+  )
+
+  if (!confirmar) return
+
+  setGuardando(true)
+
+  try {
+    let listaEquipos = equiposDivision.map((equipo) => equipo.id)
+
+    // Si hay número impar de equipos, agregamos un descanso.
+    if (listaEquipos.length % 2 !== 0) {
+      listaEquipos.push(null)
+    }
+
+    const totalEquipos = listaEquipos.length
+    const totalJornadas = totalEquipos - 1
+    const partidosPorJornada = totalEquipos / 2
+
+    let rotacion = [...listaEquipos]
+
+    const fechaInicial = new Date(
+      `${temporadaSeleccionada.fecha_inicio}T12:00:00`
+    )
+
+    // Llevar la primera fecha al siguiente domingo.
+    const diasHastaDomingo = (7 - fechaInicial.getDay()) % 7
+    fechaInicial.setDate(fechaInicial.getDate() + diasHastaDomingo)
+
+    for (let numeroJornada = 1; numeroJornada <= totalJornadas; numeroJornada++) {
+      const fechaJornada = new Date(fechaInicial)
+      fechaJornada.setDate(
+        fechaInicial.getDate() + (numeroJornada - 1) * 7
+      )
+
+      const fechaTexto = [
+        fechaJornada.getFullYear(),
+        String(fechaJornada.getMonth() + 1).padStart(2, '0'),
+        String(fechaJornada.getDate()).padStart(2, '0'),
+      ].join('-')
+
+      const { data: jornadaCreada, error: jornadaError } = await supabase
+        .from('jornadas')
+        .insert({
+          division_id: Number(divisionId),
+          numero: numeroJornada,
+          fecha: fechaTexto,
+        })
+        .select('id')
+        .single()
+
+      if (jornadaError) throw jornadaError
+
+      const partidos = []
+
+      for (let i = 0; i < partidosPorJornada; i++) {
+        const local = rotacion[i]
+        const visitante = rotacion[totalEquipos - 1 - i]
+
+        // null representa descanso.
+        if (local && visitante) {
+          partidos.push({
+            jornada_id: jornadaCreada.id,
+            local_id: local,
+            visitante_id: visitante,
+            fecha: fechaTexto,
+            hora: null,
+            campo_id: null,
+            estado: 'programado',
+          })
+        }
+      }
+
+      if (partidos.length > 0) {
+        const { error: partidosError } = await supabase
+          .from('partidos')
+          .insert(partidos)
+
+        if (partidosError) throw partidosError
+      }
+
+      // Método round-robin: dejamos fijo el primer equipo.
+      const fijo = rotacion[0]
+      const resto = rotacion.slice(1)
+      resto.unshift(resto.pop())
+      rotacion = [fijo, ...resto]
+    }
+
+    setMensaje(
+      `Calendario generado correctamente: ${totalJornadas} jornadas creadas.`
+    )
+
+    await cargarDatos()
+  } catch (error) {
+    console.error(error)
+    setMensaje(`Error al generar calendario: ${error.message}`)
+  } finally {
+    setGuardando(false)
+  }
+}
   async function eliminarPartido(id) {
   const confirmar = window.confirm('¿Seguro que quieres eliminar este partido?')
 
@@ -416,6 +557,24 @@ await cargarPartidosJornada(jornadaId)
           }}
         >
           <h2>Programar partido</h2>
+<div style={{ marginBottom: '25px' }}>
+  <button
+    type="button"
+    onClick={generarCalendarioCompleto}
+    disabled={guardando || !divisionId}
+    style={{
+      padding: '10px 16px',
+      fontWeight: 'bold',
+      cursor: 'pointer'
+    }}
+  >
+    {guardando ? 'Generando...' : '⚽ Generar calendario automático'}
+  </button>
+
+  <div style={{ marginTop: '6px', fontSize: '14px' }}>
+    Crea automáticamente todas las jornadas y enfrentamientos de la división seleccionada.
+  </div>
+</div>
 
           {/* DIVISION */}
 
