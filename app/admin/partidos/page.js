@@ -47,7 +47,7 @@ const [horariosSeleccionados, setHorariosSeleccionados] = useState(['09:00', '11
     ] = await Promise.all([
       supabase
   .from('temporadas')
-  .select('id, nombre, activa, fecha_inicio, fecha_fin')
+  .select('id, nombre, activa, fecha_inicio, fecha_fin, formato')
   .order('id'),  
       supabase
   .from('divisiones')
@@ -299,7 +299,10 @@ setMensaje('Horarios y campos generados correctamente.')
 
     const totalEquipos = listaEquipos.length
     const jornadasPorVuelta = totalEquipos - 1
-const totalJornadas = jornadasPorVuelta * 2
+const totalJornadas =
+  temporadaSeleccionada.formato === 'ida'
+    ? jornadasPorVuelta
+    : jornadasPorVuelta * 2
     const partidosPorJornada = totalEquipos / 2
 
     let rotacion = [...listaEquipos]
