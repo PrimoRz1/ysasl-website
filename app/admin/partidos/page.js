@@ -27,6 +27,9 @@ const [partidosJornada, setPartidosJornada] = useState([])
   const [cargando, setCargando] = useState(true)
   const [error, setError] = useState('')
   const [camposSeleccionados, setCamposSeleccionados] = useState([])
+  const [configLiguilla, setConfigLiguilla] = useState(null)
+const [equiposClasifican, setEquiposClasifican] = useState(8)
+const [formatoLiguilla, setFormatoLiguilla] = useState('top8')
 const [horariosSeleccionados, setHorariosSeleccionados] = useState(['09:00', '11:00', '13:00', '15:00'])
 
   useEffect(() => {
@@ -106,6 +109,61 @@ const [horariosSeleccionados, setHorariosSeleccionados] = useState(['09:00', '11
 
     setCargando(false)
   }
+  async function cargarConfigLiguilla(idDivision) {
+  if (!idDivision) {
+    setConfigLiguilla(null)
+    return
+  }
+
+  const { data, error } = await supabase
+    .from('configuracion_liguilla')
+    .select('id, division_id, activa, equipos_clasifican, formato')
+    .eq('division_id', Number(idDivision))
+    .maybeSingle()
+
+  if (error) {
+    console.error('Error cargando configuración de liguilla:', error)
+    return
+  }
+
+  setConfigLiguilla(data || null)
+
+  if (data) {
+    setEquiposClasifican(data.equipos_clasifican || 8)
+    setFormatoLiguilla(data.formato || 'top8')
+  } else {
+    setEquiposClasifican(8)
+    setFormatoLiguilla('top8')
+  }
+}
+  async function guardarConfigLiguilla() {
+  if (!divisionId) {
+    alert('Selecciona una división.')
+    return
+  }
+
+  const datos = {
+    division_id: Number(divisionId),
+    activa: true,
+    equipos_clasifican: Number(equiposClasifican),
+    formato: formatoLiguilla
+  }
+
+  const { data, error } = await supabase
+    .from('configuracion_liguilla')
+    .upsert(datos, { onConflict: 'division_id' })
+    .select()
+    .single()
+
+  if (error) {
+    console.error('Error guardando configuración de liguilla:', error)
+    alert('No se pudo guardar la configuración de Liguilla.')
+    return
+  }
+
+  setConfigLiguilla(data)
+  alert('Configuración de Liguilla guardada.')
+}
 
   async function cargarPartidosJornada(idJornada) {
   if (!idJornada) {
@@ -663,7 +721,12 @@ await cargarPartidosJornada(jornadaId)
 
             <select
               value={divisionId}
-              onChange={(e) => setDivisionId(e.target.value)}
+              onChange={(e) => {
+  const nuevaDivisionId = e.target.value
+  setDivisionId(nuevaDivisionId)
+  setConfigLiguilla(null)
+  cargarConfigLiguilla(nuevaDivisionId)
+}}
               style={{
                 width: '100%',
                 padding: '10px',
@@ -684,6 +747,60 @@ await cargarPartidosJornada(jornadaId)
               ))}
             </select>
           </div>
+{/* CONFIGURACIÓN LIGUILLA */}
+{divisionId && (
+  <div
+    style={{
+      marginBottom: '20px',
+      padding: '15px',
+      border: '1px solid #ccc',
+      borderRadius: '8px'
+    }}
+  >
+    <h3>Configuración de Liguilla</h3>
+
+    <label>
+      <strong>Equipos que clasifican</strong>
+    </label>
+
+    <select
+      value={equiposClasifican}
+      onChange={(e) => {
+        const cantidad = Number(e.target.value)
+        setEquiposClasifican(cantidad)
+        setFormatoLiguilla(cantidad === 6 ? 'top6' : 'top8')
+      }}
+      style={{
+        width: '100%',
+        padding: '10px',
+        marginTop: '6px',
+        marginBottom: '12px'
+      }}
+    >
+      <option value={6}>6 equipos</option>
+      <option value={8}>8 equipos</option>
+    </select>
+
+    <div style={{ marginBottom: '12px' }}>
+      <strong>Formato:</strong>{' '}
+      {equiposClasifican === 6
+        ? '1.º y 2.º pasan directo; 3.º vs 6.º y 4.º vs 5.º'
+        : '1.º vs 8.º, 2.º vs 7.º, 3.º vs 6.º y 4.º vs 5.º'}
+    </div>
+
+    <button
+      type="button"
+      onClick={guardarConfigLiguilla}
+      style={{
+        padding: '10px 16px',
+        fontWeight: 'bold',
+        cursor: 'pointer'
+      }}
+    >
+      Guardar configuración de Liguilla
+    </button>
+  </div>
+)}
 
           {/* JORNADA */}
 
