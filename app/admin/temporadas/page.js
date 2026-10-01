@@ -273,6 +273,9 @@ async function eliminarDivision(division) {
               {' — '}
               Final: {temporada.fecha_fin || 'Sin fecha'}
             </div>
+              <div style={{ marginTop: '5px' }}>
+  Formato: {temporada.formato === 'ida' ? 'Ida solamente' : 'Ida y vuelta'}
+</div>
           <div style={{ marginTop: '15px' }}>
   <strong>Divisiones</strong>
 
