@@ -306,6 +306,7 @@ setMensaje('Horarios y campos generados correctamente.')
     setMensaje('Selecciona una división.')
     return
   }
+    console.log('DIVISION ID AL GENERAR:', divisionId)
     const { data: jornadasExistentes, error: errorJornadas } = await supabase
   .from('jornadas')
   .select('id')
