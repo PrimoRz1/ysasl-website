@@ -12,6 +12,7 @@ const [temporadaSeleccionada, setTemporadaSeleccionada] = useState(null)
   const [nombre, setNombre] = useState('')
   const [fechaInicio, setFechaInicio] = useState('')
   const [formato, setFormato] = useState('ida_vuelta')
+  const [duracionPartido, setDuracionPartido] = useState(90)
   const [diasJuego, setDiasJuego] = useState([0])
   const [mensaje, setMensaje] = useState('')
   const [guardando, setGuardando] = useState(false)
@@ -124,6 +125,7 @@ async function eliminarDivision(division) {
     nombre: nombre.trim(),
     fecha_inicio: fechaInicio || null,
     formato: formato,
+    duracion_partido: Number(duracionPartido),
     activa: false
   })
   .select('id')
@@ -155,6 +157,7 @@ if (errorDias) {
     setNombre('')
     setFechaInicio('')
     setFormato('ida_vuelta')
+    setDuracionPartido('90')
     setDiasJuego([0])
     
     setMostrarFormulario(false)
@@ -248,6 +251,21 @@ if (errorDias) {
     <option value="ida">Ida solamente</option>
     <option value="ida_vuelta">Ida y vuelta</option>
   </select>
+    <div style={{ marginTop: '15px' }}>
+  <strong>Duración del partido</strong>
+  <select
+    value={duracionPartido}
+    onChange={(e) => setDuracionPartido(e.target.value)}
+    style={{ display: 'block', marginTop: '5px' }}
+  >
+    <option value="40">40 minutos</option>
+    <option value="45">45 minutos</option>
+    <option value="50">50 minutos</option>
+    <option value="55">55 minutos</option>
+    <option value="60">60 minutos</option>
+    <option value="90">90 minutos</option>
+  </select>
+</div>
     <div style={{ marginTop: '15px' }}>
   <strong>Días de juego</strong>
 
