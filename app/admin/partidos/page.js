@@ -306,6 +306,24 @@ setMensaje('Horarios y campos generados correctamente.')
     setMensaje('Selecciona una división.')
     return
   }
+    const { data: jornadasExistentes, error: errorJornadas } = await supabase
+  .from('jornadas')
+  .select('id')
+  .eq('division_id', Number(divisionId))
+  .limit(1)
+
+if (errorJornadas) {
+  console.error('Error verificando jornadas existentes:', errorJornadas)
+  setMensaje('No se pudo verificar si ya existe un calendario.')
+  return
+}
+
+if (jornadasExistentes && jornadasExistentes.length > 0) {
+  setMensaje(
+    'Esta división ya tiene un calendario generado. No se crearán jornadas duplicadas.'
+  )
+  return
+}
 
   const equiposDivision = inscripciones
     .filter(
