@@ -12,8 +12,16 @@ const [temporadaSeleccionada, setTemporadaSeleccionada] = useState(null)
   const [nombre, setNombre] = useState('')
   const [fechaInicio, setFechaInicio] = useState('')
   const [formato, setFormato] = useState('ida_vuelta')
+  const [diasJuego, setDiasJuego] = useState([0])
   const [mensaje, setMensaje] = useState('')
   const [guardando, setGuardando] = useState(false)
+  function cambiarDia(dia) {
+  setDiasJuego((actuales) =>
+    actuales.includes(dia)
+      ? actuales.filter((d) => d !== dia)
+      : [...actuales, dia]
+  )
+}
 
   useEffect(() => {
     cargarTemporadas()
@@ -110,14 +118,16 @@ async function eliminarDivision(division) {
 
     setGuardando(true)
 
-    const { error } = await supabase
-      .from('temporadas')
-      .insert({
-        nombre: nombre.trim(),
-        fecha_inicio: fechaInicio || null,
-        formato: formato,
-        activa: false
-      })
+    const { data: temporadaCreada, error } = await supabase
+  .from('temporadas')
+  .insert({
+    nombre: nombre.trim(),
+    fecha_inicio: fechaInicio || null,
+    formato: formato,
+    activa: false
+  })
+  .select('id')
+  .single()
 
     setGuardando(false)
 
@@ -126,10 +136,26 @@ async function eliminarDivision(division) {
       setMensaje('No se pudo crear el torneo.')
       return
     }
+    const { error: errorDias } = await supabase
+  .from('dias_juego_temporada')
+  .insert(
+    diasJuego.map((dia) => ({
+      temporada_id: temporadaCreada.id,
+      dia_semana: dia
+    }))
+  )
+
+if (errorDias) {
+  console.error(errorDias)
+  setMensaje('El torneo se creó, pero no se pudieron guardar los días de juego.')
+  setGuardando(false)
+  return
+}
 
     setNombre('')
     setFechaInicio('')
     setFormato('ida_vuelta')
+    setDiasJuego([0])
     
     setMostrarFormulario(false)
     setMensaje('Torneo creado correctamente.')
@@ -222,6 +248,37 @@ async function eliminarDivision(division) {
     <option value="ida">Ida solamente</option>
     <option value="ida_vuelta">Ida y vuelta</option>
   </select>
+    <div style={{ marginTop: '15px' }}>
+  <strong>Días de juego</strong>
+
+  <div
+    style={{
+      display: 'flex',
+      flexWrap: 'wrap',
+      gap: '12px',
+      marginTop: '10px'
+    }}
+  >
+    {[
+      [0, 'Domingo'],
+      [1, 'Lunes'],
+      [2, 'Martes'],
+      [3, 'Miércoles'],
+      [4, 'Jueves'],
+      [5, 'Viernes'],
+      [6, 'Sábado']
+    ].map(([dia, nombreDia]) => (
+      <label key={dia}>
+        <input
+          type="checkbox"
+          checked={diasJuego.includes(dia)}
+          onChange={() => cambiarDia(dia)}
+        />{' '}
+        {nombreDia}
+      </label>
+    ))}
+  </div>
+</div>
 </div>
 
           
