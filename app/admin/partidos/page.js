@@ -383,20 +383,45 @@ const totalJornadas =
     const partidosPorJornada = totalEquipos / 2
 
     let rotacion = [...listaEquipos]
+const { data: diasConfigurados, error: errorDias } = await supabase
+  .from('dias_juego_temporada')
+  .select('dia_semana')
+  .eq('temporada_id', temporadaSeleccionada.id)
+  .eq('activo', true)
+  .order('dia_semana')
 
+if (errorDias) {
+  console.error(errorDias)
+  throw errorDias
+}
+
+const diasPermitidos = (diasConfigurados || []).map(
+  (item) => Number(item.dia_semana)
+)
+
+if (diasPermitidos.length === 0) {
+  throw new Error('El torneo no tiene días de juego configurados.')
+}
     const fechaInicial = new Date(
       `${temporadaSeleccionada.fecha_inicio}T12:00:00`
     )
 
-    // Llevar la primera fecha al siguiente domingo.
-    const diasHastaDomingo = (7 - fechaInicial.getDay()) % 7
-    fechaInicial.setDate(fechaInicial.getDate() + diasHastaDomingo)
+    while (!diasPermitidos.includes(fechaInicial.getDay())) {
+  fechaInicial.setDate(fechaInicial.getDate() + 1)
+}
 
     for (let numeroJornada = 1; numeroJornada <= totalJornadas; numeroJornada++) {
       const fechaJornada = new Date(fechaInicial)
-      fechaJornada.setDate(
-        fechaInicial.getDate() + (numeroJornada - 1) * 7
-      )
+
+if (numeroJornada > 1) {
+  fechaJornada.setDate(fechaJornada.getDate() + 1)
+
+  while (!diasPermitidos.includes(fechaJornada.getDay())) {
+    fechaJornada.setDate(fechaJornada.getDate() + 1)
+  }
+}
+
+fechaInicial.setTime(fechaJornada.getTime())
 
       const fechaTexto = [
         fechaJornada.getFullYear(),
