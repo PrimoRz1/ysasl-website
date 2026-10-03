@@ -1499,6 +1499,7 @@ onChange={(e) => setHora(e.target.value)}
   >
     Generar horarios y campos
   </button>
+      )}
 <button
   type="button"
   onClick={generarHorariosCamposTodaLiga}
