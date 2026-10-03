@@ -31,6 +31,11 @@ const [partidosJornada, setPartidosJornada] = useState([])
 const [equiposClasifican, setEquiposClasifican] = useState(8)
 const [formatoLiguilla, setFormatoLiguilla] = useState('top8')
 const [horariosSeleccionados, setHorariosSeleccionados] = useState(['09:00', '11:00', '13:00', '15:00'])
+  const [preferenciasHorario, setPreferenciasHorario] = useState([])
+const [guardandoPreferencia, setGuardandoPreferencia] = useState(false)
+  const [equipoPreferenciaId, setEquipoPreferenciaId] = useState('')
+const [horaPreferencia, setHoraPreferencia] = useState('09:00')
+const [tipoPreferencia, setTipoPreferencia] = useState('preferida')
 
   useEffect(() => {
     cargarDatos()
@@ -47,6 +52,7 @@ const [horariosSeleccionados, setHorariosSeleccionados] = useState(['09:00', '11
       { data: inscripcionesData, error: inscripcionesError },
       { data: jornadasData, error: jornadasError },
       { data: camposData, error: camposError }
+      { data: preferenciasData, error: preferenciasError },
     ] = await Promise.all([
       supabase
   .from('temporadas').select('id, nombre, activa, fecha_inicio, fecha_fin, formato, duracion_partido')
@@ -74,7 +80,11 @@ const [horariosSeleccionados, setHorariosSeleccionados] = useState(['09:00', '11
         .from('campos')
         .select('id, nombre, numero, activo')
         .eq('activo', true)
-        .order('numero')
+        .order('numero'),
+supabase
+  .from('preferencias_horario_equipo')
+  .select('id, equipo_id, temporada_id, hora, tipo, activo')
+  .eq('activo', true)
     ])
 
     if (
@@ -83,14 +93,16 @@ const [horariosSeleccionados, setHorariosSeleccionados] = useState(['09:00', '11
       equiposError ||
       inscripcionesError ||
       jornadasError ||
-      camposError
+      camposError ||
+preferenciasError
     ) {
       console.error({
         temporadasError,
         divisionesError,
         equiposError,
         jornadasError,
-        camposError
+        camposError,
+        preferenciasError
       })
 
       setError('No se pudieron cargar los datos.')
@@ -104,6 +116,7 @@ const [horariosSeleccionados, setHorariosSeleccionados] = useState(['09:00', '11
     setInscripciones(inscripcionesData || [])
     setJornadas(jornadasData || [])
     setCampos(camposData || [])
+    setPreferenciasHorario(preferenciasData || [])
     setCamposSeleccionados((camposData || []).map((campo) => Number(campo.id)))
 
     setCargando(false)
@@ -201,6 +214,62 @@ function editarPartido(partido) {
   setFecha(partido.fecha || '')
   setHora(partido.hora || '')
   setMensaje('')
+}
+  async function guardarPreferenciaHorario() {
+  if (!equipoPreferenciaId || !divisionId) {
+    setMensaje('Selecciona un equipo.')
+    return
+  }
+
+  const divisionSeleccionada = divisiones.find(
+    (division) => Number(division.id) === Number(divisionId)
+  )
+
+  if (!divisionSeleccionada) {
+    setMensaje('No se encontró la división seleccionada.')
+    return
+  }
+
+  setGuardandoPreferencia(true)
+  setMensaje('')
+
+  const { data, error } = await supabase
+    .from('preferencias_horario_equipo')
+    .upsert(
+      {
+        equipo_id: Number(equipoPreferenciaId),
+        temporada_id: Number(divisionSeleccionada.temporada_id),
+        hora: horaPreferencia,
+        tipo: tipoPreferencia,
+        activo: true
+      },
+      {
+        onConflict: 'equipo_id,temporada_id'
+      }
+    )
+    .select()
+
+  if (error) {
+    console.error(error)
+    setMensaje(`Error al guardar preferencia: ${error.message}`)
+    setGuardandoPreferencia(false)
+    return
+  }
+
+  setPreferenciasHorario((actuales) => {
+    const restantes = actuales.filter(
+      (item) =>
+        !(
+          Number(item.equipo_id) === Number(equipoPreferenciaId) &&
+          Number(item.temporada_id) === Number(divisionSeleccionada.temporada_id)
+        )
+    )
+
+    return [...restantes, ...(data || [])]
+  })
+
+  setMensaje('Preferencia de horario guardada correctamente.')
+  setGuardandoPreferencia(false)
 }
   async function generarHorariosCampos() {
   setMensaje('')
@@ -1065,6 +1134,53 @@ onChange={(e) => setHora(e.target.value)}
     {mensaje}
   </p>
 )}
+  <div style={{ marginTop: '20px', marginBottom: '20px' }}>
+  <strong>Preferencias de horario por equipo:</strong>
+
+  <div style={{ marginTop: '10px' }}>
+    <select
+      value={equipoPreferenciaId}
+      onChange={(e) => setEquipoPreferenciaId(e.target.value)}
+    >
+      <option value="">Seleccionar equipo</option>
+
+      {equiposDivision.map((equipo) => (
+        <option key={equipo.id} value={equipo.id}>
+          {equipo.nombre}
+        </option>
+      ))}
+    </select>
+
+    <select
+      value={horaPreferencia}
+      onChange={(e) => setHoraPreferencia(e.target.value)}
+      style={{ marginLeft: '10px' }}
+    >
+      <option value="09:00">9:00 AM</option>
+      <option value="11:00">11:00 AM</option>
+      <option value="13:00">1:00 PM</option>
+      <option value="15:00">3:00 PM</option>
+    </select>
+
+    <select
+      value={tipoPreferencia}
+      onChange={(e) => setTipoPreferencia(e.target.value)}
+      style={{ marginLeft: '10px' }}
+    >
+      <option value="preferida">Preferida</option>
+      <option value="obligatoria">Obligatoria</option>
+    </select>
+
+    <button
+      type="button"
+      onClick={guardarPreferenciaHorario}
+      disabled={guardandoPreferencia}
+      style={{ marginLeft: '10px' }}
+    >
+      {guardandoPreferencia ? 'Guardando...' : 'Guardar preferencia'}
+    </button>
+  </div>
+</div>
   <div style={{ marginTop: '20px', marginBottom: '10px' }}>
   <strong>Horarios disponibles:</strong>
 
