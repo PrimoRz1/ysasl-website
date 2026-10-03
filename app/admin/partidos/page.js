@@ -1144,7 +1144,16 @@ onChange={(e) => setHora(e.target.value)}
     >
       <option value="">Seleccionar equipo</option>
 
-      {equiposDivision.map((equipo) => (
+      {equipos
+  .filter((equipo) =>
+    inscripciones.some(
+      (inscripcion) =>
+        Number(inscripcion.equipo_id) === Number(equipo.id) &&
+        Number(inscripcion.division_id) === Number(divisionId) &&
+        inscripcion.activo
+    )
+  )
+  .map((equipo) => (
         <option key={equipo.id} value={equipo.id}>
           {equipo.nombre}
         </option>
