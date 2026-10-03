@@ -1381,7 +1381,26 @@ onChange={(e) => setHora(e.target.value)}
   <div style={{ marginTop: '10px' }}>
     <select
       value={equipoPreferenciaId}
-      onChange={(e) => setEquipoPreferenciaId(e.target.value)}
+      onChange={(e) => {
+  const nuevoEquipoId = e.target.value
+  setEquipoPreferenciaId(nuevoEquipoId)
+
+  const preferenciaGuardada = preferenciasHorario.find(
+    (preferencia) =>
+      Number(preferencia.equipo_id) === Number(nuevoEquipoId) &&
+      Number(preferencia.temporada_id) ===
+        Number(divisionSeleccionada?.temporada_id) &&
+      preferencia.activo
+  )
+
+  if (preferenciaGuardada) {
+    setHoraPreferencia(preferenciaGuardada.hora.slice(0, 5))
+    setTipoPreferencia(preferenciaGuardada.tipo)
+  } else {
+    setHoraPreferencia('09:00')
+    setTipoPreferencia('preferida')
+  }
+}}
     >
       <option value="">Seleccionar equipo</option>
 
