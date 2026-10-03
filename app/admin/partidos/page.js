@@ -336,15 +336,56 @@ if (ocupado) return
   )
   return
 }
-    const asignaciones = partidosPendientes.map((partido, index) => {
-  const espacio = espaciosDisponibles[index]
+    const espaciosRestantes = [...espaciosDisponibles]
+const asignaciones = []
 
-  return {
+for (const partido of partidosPendientes) {
+  const preferenciaLocal = preferenciasHorario.find(
+    (preferencia) =>
+      Number(preferencia.equipo_id) === Number(partido.local_id) &&
+      Number(preferencia.temporada_id) ===
+        Number(divisionSeleccionada?.temporada_id) &&
+      preferencia.activo
+  )
+
+  const preferenciaVisitante = preferenciasHorario.find(
+    (preferencia) =>
+      Number(preferencia.equipo_id) === Number(partido.visitante_id) &&
+      Number(preferencia.temporada_id) ===
+        Number(divisionSeleccionada?.temporada_id) &&
+      preferencia.activo
+  )
+
+  let indiceEspacio = -1
+
+  if (preferenciaLocal) {
+    const horaPreferida = preferenciaLocal.hora.slice(0, 5)
+
+    indiceEspacio = espaciosRestantes.findIndex(
+      (espacio) => espacio.hora === horaPreferida
+    )
+  }
+
+  if (indiceEspacio === -1 && preferenciaVisitante) {
+    const horaPreferida = preferenciaVisitante.hora.slice(0, 5)
+
+    indiceEspacio = espaciosRestantes.findIndex(
+      (espacio) => espacio.hora === horaPreferida
+    )
+  }
+
+  if (indiceEspacio === -1) {
+    indiceEspacio = 0
+  }
+
+  const espacio = espaciosRestantes.splice(indiceEspacio, 1)[0]
+
+  asignaciones.push({
     id: partido.id,
     hora: espacio.hora,
     campo_id: espacio.campo_id
-  }
-})
+  })
+}
     for (const asignacion of asignaciones) {
   if (!asignacion.hora || !asignacion.campo_id) continue
 
