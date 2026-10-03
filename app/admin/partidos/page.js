@@ -51,7 +51,7 @@ const [tipoPreferencia, setTipoPreferencia] = useState('preferida')
       { data: equiposData, error: equiposError },
       { data: inscripcionesData, error: inscripcionesError },
       { data: jornadasData, error: jornadasError },
-      { data: camposData, error: camposError }
+      { data: camposData, error: camposError },
       { data: preferenciasData, error: preferenciasError },
     ] = await Promise.all([
       supabase
