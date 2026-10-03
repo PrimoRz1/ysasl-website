@@ -1516,7 +1516,7 @@ onChange={(e) => setHora(e.target.value)}
     ? 'Generando...'
     : 'Generar horarios y campos de toda la liga'}
 </button>
-)}
+
 {jornadaId && partidosJornada.length > 0 && (
   <div style={{ marginTop: '25px' }}>
     <h3>Partidos de esta jornada</h3>
