@@ -629,7 +629,248 @@ async function generarHorariosCampos() {
     setGuardando(false)
   }
 }  
-  
+  async function generarHorariosCamposTodaLiga() {
+  setMensaje('')
+
+  if (!divisionId) {
+    setMensaje('Selecciona una división.')
+    return
+  }
+
+  if (horariosSeleccionados.length === 0) {
+    setMensaje('Selecciona por lo menos un horario.')
+    return
+  }
+
+  if (camposSeleccionados.length === 0) {
+    setMensaje('Selecciona por lo menos un campo.')
+    return
+  }
+
+  const divisionSeleccionada = divisiones.find(
+    (division) => Number(division.id) === Number(divisionId)
+  )
+
+  if (!divisionSeleccionada) {
+    setMensaje('No se encontró la división seleccionada.')
+    return
+  }
+
+  const confirmar = window.confirm(
+    'Se asignarán automáticamente horarios y campos a todos los partidos pendientes de esta división. ¿Continuar?'
+  )
+
+  if (!confirmar) return
+
+  setGuardando(true)
+
+  try {
+    // Traer todas las jornadas de esta división.
+    const { data: jornadasLiga, error: jornadasError } = await supabase
+      .from('jornadas')
+      .select('id, numero, fecha')
+      .eq('division_id', Number(divisionId))
+      .order('numero')
+
+    if (jornadasError) throw jornadasError
+
+    if (!jornadasLiga || jornadasLiga.length === 0) {
+      throw new Error('Esta división no tiene jornadas.')
+    }
+
+    const jornadaIds = jornadasLiga.map((jornada) => jornada.id)
+
+    // Traer todos los partidos de la división.
+    const { data: partidosLiga, error: partidosError } = await supabase
+      .from('partidos')
+      .select(
+        'id, jornada_id, local_id, visitante_id, fecha, hora, campo_id, estado'
+      )
+      .in('jornada_id', jornadaIds)
+      .order('fecha')
+      .order('jornada_id')
+      .order('id')
+
+    if (partidosError) throw partidosError
+
+    if (!partidosLiga || partidosLiga.length === 0) {
+      throw new Error('Esta división no tiene partidos.')
+    }
+
+    // Preferencias correspondientes a la temporada de esta división.
+    const preferenciasLiga = preferenciasHorario.filter(
+      (preferencia) =>
+        Number(preferencia.temporada_id) ===
+          Number(divisionSeleccionada.temporada_id) &&
+        preferencia.activo
+    )
+
+    const obtenerPreferencia = (equipoId) =>
+      preferenciasLiga.find(
+        (preferencia) => Number(preferencia.equipo_id) === Number(equipoId)
+      )
+
+    // Contador por equipo y horario para repartir los horarios justamente.
+    const contador = {}
+
+    const prepararEquipo = (equipoId) => {
+      if (!contador[equipoId]) {
+        contador[equipoId] = {}
+        horariosSeleccionados.forEach((horario) => {
+          contador[equipoId][horario] = 0
+        })
+      }
+    }
+
+    partidosLiga.forEach((partido) => {
+      prepararEquipo(partido.local_id)
+      prepararEquipo(partido.visitante_id)
+
+      // Contar también horarios que ya fueron asignados manualmente.
+      if (
+        partido.hora &&
+        horariosSeleccionados.includes(partido.hora.slice(0, 5))
+      ) {
+        const horarioActual = partido.hora.slice(0, 5)
+        contador[partido.local_id][horarioActual]++
+        contador[partido.visitante_id][horarioActual]++
+      }
+    })
+
+    let totalActualizados = 0
+
+    // Trabajamos jornada por jornada para no repetir campo/hora.
+    for (const jornada of jornadasLiga) {
+      const partidosJornadaLiga = partidosLiga.filter(
+        (partido) => Number(partido.jornada_id) === Number(jornada.id)
+      )
+
+      // Respetar espacios que ya fueron asignados manualmente.
+      const espaciosOcupados = new Set(
+        partidosJornadaLiga
+          .filter((partido) => partido.hora && partido.campo_id)
+          .map(
+            (partido) =>
+              `${partido.hora.slice(0, 5)}-${Number(partido.campo_id)}`
+          )
+      )
+
+      const pendientes = partidosJornadaLiga.filter(
+        (partido) => !partido.hora || !partido.campo_id
+      )
+
+      for (const partido of pendientes) {
+        prepararEquipo(partido.local_id)
+        prepararEquipo(partido.visitante_id)
+
+        const prefLocal = obtenerPreferencia(partido.local_id)
+        const prefVisitante = obtenerPreferencia(partido.visitante_id)
+
+        const candidatos = []
+
+        horariosSeleccionados.forEach((horario) => {
+          camposSeleccionados.forEach((campoSeleccionado) => {
+            const campoNumero = Number(campoSeleccionado)
+            const clave = `${horario}-${campoNumero}`
+
+            if (espaciosOcupados.has(clave)) return
+
+            let puntuacion =
+              contador[partido.local_id][horario] +
+              contador[partido.visitante_id][horario]
+
+            // Preferencia normal: ayuda a escoger ese horario,
+            // pero conserva el equilibrio general.
+            if (prefLocal?.hora?.slice(0, 5) === horario) {
+              puntuacion -=
+                prefLocal.tipo === 'obligatoria' ? 10000 : 100
+            }
+
+            if (prefVisitante?.hora?.slice(0, 5) === horario) {
+              puntuacion -=
+                prefVisitante.tipo === 'obligatoria' ? 10000 : 100
+            }
+
+            // Penalización muy alta si una preferencia obligatoria
+            // no se está respetando.
+            if (
+              prefLocal?.tipo === 'obligatoria' &&
+              prefLocal.hora?.slice(0, 5) !== horario
+            ) {
+              puntuacion += 10000
+            }
+
+            if (
+              prefVisitante?.tipo === 'obligatoria' &&
+              prefVisitante.hora?.slice(0, 5) !== horario
+            ) {
+              puntuacion += 10000
+            }
+
+            candidatos.push({
+              hora: horario,
+              campo_id: campoNumero,
+              puntuacion
+            })
+          })
+        })
+
+        if (candidatos.length === 0) {
+          throw new Error(
+            `No hay suficientes campos y horarios disponibles para la Jornada ${jornada.numero}.`
+          )
+        }
+
+        candidatos.sort((a, b) => {
+          if (a.puntuacion !== b.puntuacion) {
+            return a.puntuacion - b.puntuacion
+          }
+
+          const indiceHoraA = horariosSeleccionados.indexOf(a.hora)
+          const indiceHoraB = horariosSeleccionados.indexOf(b.hora)
+
+          if (indiceHoraA !== indiceHoraB) {
+            return indiceHoraA - indiceHoraB
+          }
+
+          return a.campo_id - b.campo_id
+        })
+
+        const mejor = candidatos[0]
+
+        const { error: actualizarError } = await supabase
+          .from('partidos')
+          .update({
+            hora: mejor.hora,
+            campo_id: mejor.campo_id
+          })
+          .eq('id', partido.id)
+
+        if (actualizarError) throw actualizarError
+
+        espaciosOcupados.add(`${mejor.hora}-${mejor.campo_id}`)
+
+        contador[partido.local_id][mejor.hora]++
+        contador[partido.visitante_id][mejor.hora]++
+
+        totalActualizados++
+      }
+    }
+
+    setMensaje(
+      `Horarios y campos generados para toda la división. ${totalActualizados} partidos actualizados.`
+    )
+
+    if (jornadaId) {
+      await cargarPartidosJornada(jornadaId)
+    }
+  } catch (error) {
+    console.error(error)
+    setMensaje(`Error al generar toda la liga: ${error.message}`)
+  } finally {
+    setGuardando(false)
+  }
+}
   async function eliminarPartido(id) {
   const confirmar = window.confirm('¿Seguro que quieres eliminar este partido?')
 
@@ -1258,6 +1499,22 @@ onChange={(e) => setHora(e.target.value)}
   >
     Generar horarios y campos
   </button>
+<button
+  type="button"
+  onClick={generarHorariosCamposTodaLiga}
+  disabled={guardando}
+  style={{
+    width: '100%',
+    padding: '12px',
+    marginTop: '10px',
+    fontWeight: 'bold',
+    cursor: 'pointer'
+  }}
+>
+  {guardando
+    ? 'Generando...'
+    : 'Generar horarios y campos de toda la liga'}
+</button>
 )}
 {jornadaId && partidosJornada.length > 0 && (
   <div style={{ marginTop: '25px' }}>
