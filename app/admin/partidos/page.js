@@ -337,20 +337,28 @@ if (ocupado) return
   return
 }const asignaciones = partidosPendientes.map((partido) => {
   const preferenciaLocal = preferenciasHorario.find(
-    (preferencia) =>
-      Number(preferencia.equipo_id) === Number(partido.local_id) &&
-      Number(preferencia.temporada_id) ===
-        Number(divisionSeleccionada?.temporada_id) &&
-      preferencia.activo
-  )
+  (preferencia) =>
+    Number(preferencia.equipo_id) === Number(partido.local_id) &&
+    Number(preferencia.temporada_id) ===
+      Number(
+        divisiones.find(
+          (division) => Number(division.id) === Number(divisionId)
+        )?.temporada_id
+      ) &&
+    preferencia.activo
+)
 
   const preferenciaVisitante = preferenciasHorario.find(
-    (preferencia) =>
-      Number(preferencia.equipo_id) === Number(partido.visitante_id) &&
-      Number(preferencia.temporada_id) ===
-        Number(divisionSeleccionada?.temporada_id) &&
-      preferencia.activo
-  )
+  (preferencia) =>
+    Number(preferencia.equipo_id) === Number(partido.visitante_id) &&
+    Number(preferencia.temporada_id) ===
+      Number(
+        divisiones.find(
+          (division) => Number(division.id) === Number(divisionId)
+        )?.temporada_id
+      ) &&
+    preferencia.activo
+)
 
   let indiceEspacio = -1
 
