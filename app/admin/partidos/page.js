@@ -836,21 +836,21 @@ async function generarHorariosCampos() {
                 prefVisitante.tipo === 'obligatoria' ? 10000 : 100
             }
 
-            // Penalización muy alta si una preferencia obligatoria
-            // no se está respetando.
-            if (
-              prefLocal?.tipo === 'obligatoria' &&
-              prefLocal.hora?.slice(0, 5) !== horario
-            ) {
-              puntuacion += 10000
-            }
+            // Una preferencia obligatoria es una regla estricta.
+// Si este horario no coincide, no puede ser candidato.
+if (
+  prefLocal?.tipo === 'obligatoria' &&
+  prefLocal.hora?.slice(0, 5) !== horario
+) {
+  return
+}
 
-            if (
-              prefVisitante?.tipo === 'obligatoria' &&
-              prefVisitante.hora?.slice(0, 5) !== horario
-            ) {
-              puntuacion += 10000
-            }
+if (
+  prefVisitante?.tipo === 'obligatoria' &&
+  prefVisitante.hora?.slice(0, 5) !== horario
+) {
+  return
+}
 
             candidatos.push({
               hora: horario,
