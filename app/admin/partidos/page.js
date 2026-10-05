@@ -1385,13 +1385,16 @@ onChange={(e) => setHora(e.target.value)}
   const nuevoEquipoId = e.target.value
   setEquipoPreferenciaId(nuevoEquipoId)
 
-  const preferenciaGuardada = preferenciasHorario.find(
-    (preferencia) =>
-      Number(preferencia.equipo_id) === Number(nuevoEquipoId) &&
-      Number(preferencia.temporada_id) ===
-        Number(divisionSeleccionada?.temporada_id) &&
-      preferencia.activo
-  )
+  const temporadaIdActual = divisiones.find(
+  (division) => Number(division.id) === Number(divisionId)
+)?.temporada_id
+
+const preferenciaGuardada = preferenciasHorario.find(
+  (preferencia) =>
+    Number(preferencia.equipo_id) === Number(nuevoEquipoId) &&
+    Number(preferencia.temporada_id) === Number(temporadaIdActual) &&
+    preferencia.activo
+)
 
   if (preferenciaGuardada) {
     setHoraPreferencia(preferenciaGuardada.hora.slice(0, 5))
