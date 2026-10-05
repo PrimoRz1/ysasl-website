@@ -335,9 +335,46 @@ if (ocupado) return
     `No hay suficientes espacios. Hay ${partidosPendientes.length} partidos y solamente ${espaciosDisponibles.length} combinaciones de campo y horario disponibles.`
   )
   return
-}
-    const asignaciones = partidosPendientes.map((partido, index) => {
-  const espacio = espaciosDisponibles[index]
+}const asignaciones = partidosPendientes.map((partido) => {
+  const preferenciaLocal = preferenciasHorario.find(
+    (preferencia) =>
+      Number(preferencia.equipo_id) === Number(partido.local_id) &&
+      Number(preferencia.temporada_id) ===
+        Number(divisionSeleccionada?.temporada_id) &&
+      preferencia.activo
+  )
+
+  const preferenciaVisitante = preferenciasHorario.find(
+    (preferencia) =>
+      Number(preferencia.equipo_id) === Number(partido.visitante_id) &&
+      Number(preferencia.temporada_id) ===
+        Number(divisionSeleccionada?.temporada_id) &&
+      preferencia.activo
+  )
+
+  let indiceEspacio = -1
+
+  if (preferenciaLocal) {
+    const horaPreferida = preferenciaLocal.hora.slice(0, 5)
+
+    indiceEspacio = espaciosDisponibles.findIndex(
+      (espacio) => espacio.hora === horaPreferida
+    )
+  }
+
+  if (indiceEspacio === -1 && preferenciaVisitante) {
+    const horaPreferida = preferenciaVisitante.hora.slice(0, 5)
+
+    indiceEspacio = espaciosDisponibles.findIndex(
+      (espacio) => espacio.hora === horaPreferida
+    )
+  }
+
+  if (indiceEspacio === -1) {
+    indiceEspacio = 0
+  }
+
+  const espacio = espaciosDisponibles.splice(indiceEspacio, 1)[0]
 
   return {
     id: partido.id,
