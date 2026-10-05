@@ -783,6 +783,7 @@ async function generarHorariosCampos() {
     })
 
     let totalActualizados = 0
+    const actualizacionesPendientes = []
 
     // Trabajamos jornada por jornada para no repetir campo/hora.
     for (const jornada of jornadasLiga) {
@@ -883,15 +884,11 @@ if (
 
         const mejor = candidatos[0]
 
-        const { error: actualizarError } = await supabase
-          .from('partidos')
-          .update({
-            hora: mejor.hora,
-            campo_id: mejor.campo_id
-          })
-          .eq('id', partido.id)
-
-        if (actualizarError) throw actualizarError
+        actualizacionesPendientes.push({
+  id: partido.id,
+  hora: mejor.hora,
+  campo_id: mejor.campo_id
+})
 
         espaciosOcupados.add(`${mejor.hora}-${mejor.campo_id}`)
 
@@ -901,6 +898,17 @@ if (
         totalActualizados++
       }
     }
+    for (const actualizacion of actualizacionesPendientes) {
+  const { error: actualizarError } = await supabase
+    .from('partidos')
+    .update({
+      hora: actualizacion.hora,
+      campo_id: actualizacion.campo_id
+    })
+    .eq('id', actualizacion.id)
+
+  if (actualizarError) throw actualizarError
+}
 
     setMensaje(
       `Horarios y campos generados para toda la división. ${totalActualizados} partidos actualizados.`
