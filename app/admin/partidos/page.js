@@ -862,10 +862,29 @@ if (
         })
 
         if (candidatos.length === 0) {
-          throw new Error(
-            `No hay suficientes campos y horarios disponibles para la Jornada ${jornada.numero}.`
-          )
-        }
+  const nombreLocal =
+    equipos.find((equipo) => Number(equipo.id) === Number(partido.local_id))
+      ?.nombre || 'Equipo local'
+
+  const nombreVisitante =
+    equipos.find(
+      (equipo) => Number(equipo.id) === Number(partido.visitante_id)
+    )?.nombre || 'Equipo visitante'
+
+  if (
+    prefLocal?.tipo === 'obligatoria' &&
+    prefVisitante?.tipo === 'obligatoria' &&
+    prefLocal.hora?.slice(0, 5) !== prefVisitante.hora?.slice(0, 5)
+  ) {
+    throw new Error(
+      `Conflicto de horarios obligatorios en Jornada ${jornada.numero}: ${nombreLocal} requiere ${prefLocal.hora.slice(0, 5)} y ${nombreVisitante} requiere ${prefVisitante.hora.slice(0, 5)}.`
+    )
+  }
+
+  throw new Error(
+    `No hay suficientes campos y horarios disponibles para la Jornada ${jornada.numero}.`
+  )
+}
 
         candidatos.sort((a, b) => {
           if (a.puntuacion !== b.puntuacion) {
