@@ -881,9 +881,22 @@ if (
     )
   }
 
+    const horarioObligatorio =
+  prefLocal?.tipo === 'obligatoria'
+    ? prefLocal.hora?.slice(0, 5)
+    : prefVisitante?.tipo === 'obligatoria'
+      ? prefVisitante.hora?.slice(0, 5)
+      : null
+
+if (horarioObligatorio) {
   throw new Error(
-    `No hay suficientes campos y horarios disponibles para la Jornada ${jornada.numero}.`
+    `No hay suficientes campos disponibles en la Jornada ${jornada.numero} para cumplir el horario obligatorio de las ${horarioObligatorio}.`
   )
+}
+
+throw new Error(
+  `No hay suficientes campos y horarios disponibles para la Jornada ${jornada.numero}.`
+)
 }
 
         candidatos.sort((a, b) => {
