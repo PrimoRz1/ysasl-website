@@ -63,12 +63,12 @@ export default function AdminPage() {
           marginTop: '35px'
         }}
       >
-        <AdminCard titulo="Equipos" descripcion="Administrar equipos de la liga" />
+        <AdminCard titulo="Equipos" descripcion="Administrar equipos de la liga" href="/admin/equipos" />
         <AdminCard titulo="Jugadores" descripcion="Agregar y editar jugadores" href="/admin/jugadores" />
         <AdminCard titulo="Partidos" descripcion="Programar partidos y jornadas" href="/admin/partidos" />
-        <AdminCard titulo="Resultados" descripcion="Registrar resultados" />
+        <AdminCard titulo="Resultados" descripcion="Registrar resultados" href="/admin/resultados" />
         <AdminCard titulo="Disciplina" descripcion="Tarjetas y suspensiones" href="/admin/disciplina" />
-        <AdminCard titulo="Patrocinadores" descripcion="Administrar patrocinadores" />
+        <AdminCard titulo="Patrocinadores" descripcion="Administrar patrocinadores" href="/admin/patrocinadores" />
       </div>
     </main>
   )
