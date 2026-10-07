@@ -9,6 +9,7 @@ export default function PatrocinadoresAdminPage() {
   const [telefono, setTelefono] = useState('')
   const [enlace, setEnlace] = useState('')
   const [imagenUrl, setImagenUrl] = useState('')
+  const [archivoImagen, setArchivoImagen] = useState(null)
   const [tipo, setTipo] = useState('normal')
   const [fechaInicio, setFechaInicio] = useState('')
   const [fechaFin, setFechaFin] = useState('')
@@ -40,10 +41,35 @@ export default function PatrocinadoresAdminPage() {
     setTelefono('')
     setEnlace('')
     setImagenUrl('')
+    setArchivoImagen(null)
     setTipo('normal')
     setFechaInicio('')
     setFechaFin('')
     setEditandoId(null)
+  }
+
+  async function subirImagen() {
+    if (!archivoImagen) {
+      return imagenUrl || null
+    }
+
+    const extension = archivoImagen.name.split('.').pop()
+    const nombreArchivo =
+      `${Date.now()}-${Math.random().toString(36).substring(2)}.${extension}`
+
+    const { error: uploadError } = await supabase.storage
+      .from('patrocinadores')
+      .upload(nombreArchivo, archivoImagen)
+
+    if (uploadError) {
+      throw uploadError
+    }
+
+    const { data } = supabase.storage
+      .from('patrocinadores')
+      .getPublicUrl(nombreArchivo)
+
+    return data.publicUrl
   }
 
   async function guardarPatrocinador(e) {
@@ -57,51 +83,56 @@ export default function PatrocinadoresAdminPage() {
     setGuardando(true)
     setMensaje('')
 
-    const datos = {
-      nombre: nombre.trim(),
-      telefono: telefono.trim() || null,
-      enlace: enlace.trim() || null,
-      imagen_url: imagenUrl.trim() || null,
-      tipo,
-      fecha_inicio: fechaInicio || null,
-      fecha_fin: fechaFin || null
-    }
+    try {
+      const urlFinal = await subirImagen()
 
-    let error
+      const datos = {
+        nombre: nombre.trim(),
+        telefono: telefono.trim() || null,
+        enlace: enlace.trim() || null,
+        imagen_url: urlFinal,
+        tipo,
+        fecha_inicio: fechaInicio || null,
+        fecha_fin: fechaFin || null
+      }
 
-    if (editandoId) {
-      const resultado = await supabase
-        .from('patrocinadores')
-        .update(datos)
-        .eq('id', editandoId)
+      let error
 
-      error = resultado.error
-    } else {
-      const resultado = await supabase
-        .from('patrocinadores')
-        .insert({
-          ...datos,
-          activo: true
-        })
+      if (editandoId) {
+        const resultado = await supabase
+          .from('patrocinadores')
+          .update(datos)
+          .eq('id', editandoId)
 
-      error = resultado.error
-    }
+        error = resultado.error
+      } else {
+        const resultado = await supabase
+          .from('patrocinadores')
+          .insert({
+            ...datos,
+            activo: true
+          })
 
-    if (error) {
+        error = resultado.error
+      }
+
+      if (error) {
+        throw error
+      }
+
+      setMensaje(
+        editandoId
+          ? 'Patrocinador actualizado correctamente.'
+          : 'Patrocinador guardado correctamente.'
+      )
+
+      limpiarFormulario()
+      await cargarPatrocinadores()
+    } catch (error) {
       console.error(error)
       setMensaje(`Error al guardar: ${error.message}`)
-      setGuardando(false)
-      return
     }
 
-    setMensaje(
-      editandoId
-        ? 'Patrocinador actualizado correctamente.'
-        : 'Patrocinador guardado correctamente.'
-    )
-
-    limpiarFormulario()
-    await cargarPatrocinadores()
     setGuardando(false)
   }
 
@@ -111,6 +142,7 @@ export default function PatrocinadoresAdminPage() {
     setTelefono(patrocinador.telefono || '')
     setEnlace(patrocinador.enlace || '')
     setImagenUrl(patrocinador.imagen_url || '')
+    setArchivoImagen(null)
     setTipo(patrocinador.tipo || 'normal')
     setFechaInicio(patrocinador.fecha_inicio || '')
     setFechaFin(patrocinador.fecha_fin || '')
@@ -235,19 +267,41 @@ export default function PatrocinadoresAdminPage() {
         </div>
 
         <div>
-          <label><strong>URL del logo o imagen</strong></label>
+          <label><strong>Logo o imagen del patrocinador</strong></label>
+
           <input
-            type="text"
-            value={imagenUrl}
-            onChange={(e) => setImagenUrl(e.target.value)}
-            placeholder="https://..."
+            type="file"
+            accept="image/*"
+            onChange={(e) => {
+              const archivo = e.target.files?.[0] || null
+              setArchivoImagen(archivo)
+            }}
             style={{
               display: 'block',
-              width: '100%',
-              padding: '10px',
-              marginTop: '5px'
+              marginTop: '8px'
             }}
           />
+
+          {archivoImagen && (
+            <p style={{ marginTop: '8px' }}>
+              Imagen seleccionada: <strong>{archivoImagen.name}</strong>
+            </p>
+          )}
+
+          {!archivoImagen && imagenUrl && (
+            <div style={{ marginTop: '10px' }}>
+              <p>Logo actual:</p>
+              <img
+                src={imagenUrl}
+                alt="Logo del patrocinador"
+                style={{
+                  maxWidth: '200px',
+                  maxHeight: '120px',
+                  objectFit: 'contain'
+                }}
+              />
+            </div>
+          )}
         </div>
 
         <div>
@@ -321,7 +375,10 @@ export default function PatrocinadoresAdminPage() {
               limpiarFormulario()
               setMensaje('Edición cancelada.')
             }}
-            style={{ padding: '10px', cursor: 'pointer' }}
+            style={{
+              padding: '10px',
+              cursor: 'pointer'
+            }}
           >
             Cancelar edición
           </button>
@@ -349,7 +406,22 @@ export default function PatrocinadoresAdminPage() {
                 padding: '16px'
               }}
             >
-              <strong>{patrocinador.nombre}</strong>
+              {patrocinador.imagen_url && (
+                <img
+                  src={patrocinador.imagen_url}
+                  alt={patrocinador.nombre}
+                  style={{
+                    maxWidth: '180px',
+                    maxHeight: '100px',
+                    objectFit: 'contain',
+                    marginBottom: '10px'
+                  }}
+                />
+              )}
+
+              <div>
+                <strong>{patrocinador.nombre}</strong>
+              </div>
 
               {patrocinador.telefono && (
                 <div>Teléfono: {patrocinador.telefono}</div>
