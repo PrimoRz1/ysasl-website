@@ -25,8 +25,14 @@ export default async function Home() {
     .order('fecha')
     .order('hora')
 
+  const { data: patrocinadores, error: errorPatrocinadores } = await supabase
+  .from('patrocinadores')
+  .select('id, nombre, enlace, imagen_url, fecha_inicio, fecha_fin')
+  .eq('activo', true)
+  .eq('tipo', 'principal')
+  .order('nombre')
   const hayError =
-    errorDivisiones || errorClasificacion || errorPartidos
+  errorDivisiones || errorClasificacion || errorPartidos || errorPatrocinadores
 
   return (
     <main
@@ -196,6 +202,52 @@ export default async function Home() {
           </section>
         )
       })}
+
+      {patrocinadores && patrocinadores.length > 0 && (
+        <section
+          style={{
+            marginTop: '60px',
+            textAlign: 'center'
+          }}
+        >
+          <h2>Patrocinadores Principales</h2>
+
+          <div
+            style={{
+              display: 'grid',
+              gridTemplateColumns: 'repeat(auto-fit, minmax(260px, 1fr))',
+              gap: '20px',
+              marginTop: '25px'
+            }}
+          >
+            {patrocinadores.map((patrocinador) => (
+              <div
+                key={patrocinador.id}
+                style={{
+                  border: '2px solid #0b2341',
+                  borderRadius: '12px',
+                  padding: '25px',
+                  background: 'white'
+                }}
+              >
+                {patrocinador.imagen_url && (
+                  <img
+                    src={patrocinador.imagen_url}
+                    alt={patrocinador.nombre}
+                    style={{
+                      maxWidth: '220px',
+                      maxHeight: '130px',
+                      objectFit: 'contain'
+                    }}
+                  />
+                )}
+
+                <h3>{patrocinador.nombre}</h3>
+              </div>
+            ))}
+          </div>
+        </section>
+      )}
     </main>
   )
 }
