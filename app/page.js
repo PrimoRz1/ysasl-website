@@ -38,8 +38,15 @@ export default async function Home() {
   .eq('activo', true)
   .eq('tipo', 'destacado')
   .order('nombre')
+
+  const { data: normales, error: errorNormales } = await supabase
+  .from('patrocinadores')
+  .select('id, nombre, enlace, imagen_url, fecha_inicio, fecha_fin')
+  .eq('activo', true)
+  .eq('tipo', 'normal')
+  .order('nombre')
   const hayError =
-  errorDivisiones || errorClasificacion || errorPartidos || errorPatrocinadores || errorDestacados
+  errorDivisiones || errorClasificacion || errorPartidos || errorPatrocinadores || errorDestacados || errorNormales
 
   return (
     <main
@@ -335,6 +342,49 @@ export default async function Home() {
               style={{
                 maxWidth: '180px',
                 maxHeight: '110px',
+                objectFit: 'contain'
+              }}
+            />
+          )}
+
+          <h3>{patrocinador.nombre}</h3>
+        </div>
+      ))}
+    </div>
+  </section>
+)}
+  {normales && normales.length > 0 && (
+  <section style={{ marginTop: '45px' }}>
+    <h2 style={{ textAlign: 'center' }}>
+      Patrocinadores
+    </h2>
+
+    <div
+      style={{
+        display: 'grid',
+        gridTemplateColumns: 'repeat(auto-fit, minmax(180px, 1fr))',
+        gap: '20px',
+        marginTop: '25px'
+      }}
+    >
+      {normales.map((patrocinador) => (
+        <div
+          key={patrocinador.id}
+          style={{
+            border: '1px solid #ddd',
+            borderRadius: '10px',
+            padding: '20px',
+            textAlign: 'center',
+            background: 'white'
+          }}
+        >
+          {patrocinador.imagen_url && (
+            <img
+              src={patrocinador.imagen_url}
+              alt={patrocinador.nombre}
+              style={{
+                maxWidth: '150px',
+                maxHeight: '90px',
                 objectFit: 'contain'
               }}
             />
