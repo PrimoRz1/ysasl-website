@@ -67,6 +67,9 @@ export default function RootLayout({ children }) {
               <Link href="/disciplina" style={linkStyle}>
                 DISCIPLINA
               </Link>
+              <Link href="/patrocinadores" style={linkStyle}>
+  PATROCINADORES
+</Link>
             </nav>
           </div>
         </header>
