@@ -238,11 +238,16 @@ export default async function Home() {
               <div
                 key={patrocinador.id}
                 style={{
-                  border: '2px solid #0b2341',
-                  borderRadius: '12px',
-                  padding: '25px',
-                  background: 'white'
-                }}
+  border: '2px solid #0b2341',
+  borderRadius: '12px',
+  padding: '18px',
+  background: 'white',
+  maxWidth: '420px',
+  width: '100%',
+  boxSizing: 'border-box',
+  margin: '0 auto',
+  textAlign: 'center'
+}}
               >
                 {patrocinador.imagen_url && (
                   <img
