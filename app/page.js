@@ -242,7 +242,7 @@ export default async function Home() {
   borderRadius: '12px',
   padding: '18px',
   background: 'white',
-  maxWidth: '420px',
+  maxWidth: '650px',
   width: '100%',
   boxSizing: 'border-box',
   margin: '0 auto',
@@ -254,8 +254,8 @@ export default async function Home() {
                     src={patrocinador.imagen_url}
                     alt={patrocinador.nombre}
                     style={{
-                      maxWidth: '220px',
-                      maxHeight: '130px',
+                      maxWidth: '400px',
+                      maxHeight: '220px',
                       objectFit: 'contain'
                     }}
                   />
