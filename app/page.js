@@ -313,7 +313,7 @@ export default async function Home() {
     }}
   >
     <h2 style={{ textAlign: 'center' }}>
-      Patrocinadores detacados
+      Patrocinadores destacados
     </h2>
 
     <div
