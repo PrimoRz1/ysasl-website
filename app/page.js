@@ -248,6 +248,49 @@ export default async function Home() {
           </div>
         </section>
       )}
+
+        {destacados.length > 0 && (
+  <section style={{ marginTop: '50px' }}>
+    <h2 style={{ textAlign: 'center', marginBottom: '25px' }}>
+      Patrocinadores Destacados
+    </h2>
+
+    <div
+      style={{
+        display: 'grid',
+        gridTemplateColumns: 'repeat(auto-fit, minmax(220px, 1fr))',
+        gap: '20px'
+      }}
+    >
+      {destacados.map((patrocinador) => (
+        <div
+          key={patrocinador.id}
+          style={{
+            border: '1px solid #ddd',
+            borderRadius: '10px',
+            padding: '20px',
+            textAlign: 'center',
+            background: 'white'
+          }}
+        >
+          {patrocinador.imagen_url && (
+            <img
+              src={patrocinador.imagen_url}
+              alt={patrocinador.nombre}
+              style={{
+                maxWidth: '180px',
+                maxHeight: '110px',
+                objectFit: 'contain'
+              }}
+            />
+          )}
+
+          <h3>{patrocinador.nombre}</h3>
+        </div>
+      ))}
+    </div>
+  </section>
+)}
     </main>
   )
 }
