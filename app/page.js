@@ -31,8 +31,15 @@ export default async function Home() {
   .eq('activo', true)
   .eq('tipo', 'principal')
   .order('nombre')
+
+  const { data: destacados, error: errorDestacados } = await supabase
+  .from('patrocinadores')
+  .select('id, nombre, enlace, imagen_url, fecha_inicio, fecha_fin')
+  .eq('activo', true)
+  .eq('tipo', 'destacado')
+  .order('nombre')
   const hayError =
-  errorDivisiones || errorClasificacion || errorPartidos || errorPatrocinadores
+  errorDivisiones || errorClasificacion || errorPartidos || errorPatrocinadores || errorDestacados
 
   return (
     <main
