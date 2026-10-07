@@ -263,10 +263,10 @@ export default async function Home() {
         </section>
       )}
 
-        {destacados.length > 0 && (
+        {normales.length > 0 && (
   <section style={{ marginTop: '50px' }}>
     <h2 style={{ textAlign: 'center', marginBottom: '25px' }}>
-      Patrocinadores Destacados
+      Patrocinadores
     </h2>
 
     <div
@@ -276,7 +276,7 @@ export default async function Home() {
         gap: '20px'
       }}
     >
-      {destacados.map((patrocinador) => (
+      {normales.map((patrocinador) => (
         <div
           key={patrocinador.id}
           style={{
@@ -313,7 +313,7 @@ export default async function Home() {
     }}
   >
     <h2 style={{ textAlign: 'center' }}>
-      Patrocinadores Destacados
+      Patrocinadores detacados
     </h2>
 
     <div
