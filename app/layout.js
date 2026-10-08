@@ -1,4 +1,5 @@
 import Link from 'next/link'
+import BannerPublicidad from './BannerPublicidad'
 
 export const metadata = {
   title: 'YSASL | Yuba Sutter Adult Soccer League',
@@ -90,7 +91,7 @@ export default function RootLayout({ children }) {
               padding: '25px',
             }}
           >
-            Espacio para banners publicitarios de YSASL
+            <BannerPublicidad />
           </div>
         </section>
 
