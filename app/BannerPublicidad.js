@@ -3,8 +3,11 @@
 
 import { useEffect, useState } from 'react'
 import { supabase } from '../lib/supabase'
+import { usePathname } from 'next/navigation'
 
 export default function BannerPublicidad() {
+  const pathname = usePathname()
+const ocultarBanner = pathname === '/admin' || pathname.startsWith('/admin/')
   const [anuncios, setAnuncios] = useState([])
   const [actual, setActual] = useState(0)
 
@@ -34,7 +37,7 @@ export default function BannerPublicidad() {
     return () => clearInterval(intervalo)
   }, [anuncios.length])
 
-  if (anuncios.length === 0) return null
+  if (ocultarBanner || anuncios.length === 0) return null
 
   const anuncio = anuncios[actual]
 
