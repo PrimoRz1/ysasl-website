@@ -12,7 +12,7 @@ export default function BannerPublicidad() {
     async function cargar() {
       const { data, error } = await supabase
         .from('patrocinadores')
-        .select('id, nombre, imagen_url, enlace, telefono, tipo')
+        .select('id, nombre, imagen_url, enlace, telefono, direccion, descripcion, tipo')
         .eq('activo', true)
         .order('id')
 
@@ -70,6 +70,17 @@ export default function BannerPublicidad() {
         {anuncio.telefono && (
           <div>{anuncio.telefono}</div>
         )}
+{anuncio.direccion && (
+  <div style={{ marginTop: '5px', fontSize: '14px' }}>
+    📍 {anuncio.direccion}
+  </div>
+)}
+
+{anuncio.descripcion && (
+  <div style={{ marginTop: '5px', fontSize: '14px' }}>
+    {anuncio.descripcion}
+  </div>
+)}
       </a>
     </div>
   )
