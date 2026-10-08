@@ -27,12 +27,13 @@ export default function InscripcionesPage() {
             supabase
               .from('temporadas')
               .select('id, nombre')
-              .eq('inscripciones_abiertas', true)
+              
               .order('id', { ascending: false }),
 
             supabase
               .from('divisiones')
               .select('id, nombre, temporada_id')
+            .eq('inscripciones_abiertas', true)
               .order('orden', { ascending: true })
           ])
 
@@ -44,8 +45,18 @@ export default function InscripcionesPage() {
           throw resultadoDivisiones.error
         }
 
-        setTorneos(resultadoTorneos.data || [])
-        setDivisiones(resultadoDivisiones.data || [])
+        const divisionesAbiertas = resultadoDivisiones.data || []
+
+const torneosDisponibles = (resultadoTorneos.data || []).filter(
+  (torneo) =>
+    divisionesAbiertas.some(
+      (division) =>
+        Number(division.temporada_id) === Number(torneo.id)
+    )
+)
+
+setTorneos(torneosDisponibles)
+setDivisiones(divisionesAbiertas)
       } catch (error) {
         console.error(error)
         setErrorCarga(
