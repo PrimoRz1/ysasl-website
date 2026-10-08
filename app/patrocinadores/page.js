@@ -5,7 +5,7 @@ export const dynamic = 'force-dynamic'
 export default async function PatrocinadoresPage() {
   const { data: patrocinadores, error } = await supabase
     .from('patrocinadores')
-    .select('id, nombre, telefono, enlace, imagen_url, tipo, fecha_inicio, fecha_fin')
+    .select('id, nombre, telefono, direccion, descripcion, enlace, imagen_url, tipo, fecha_inicio, fecha_fin')
     .eq('activo', true)
     .order('nombre')
 
@@ -78,6 +78,17 @@ export default async function PatrocinadoresPage() {
         {patrocinador.telefono && (
           <p>Teléfono: {patrocinador.telefono}</p>
         )}
+{patrocinador.direccion && (
+  <p style={{ fontSize: '14px', margin: '6px 0' }}>
+    📍 {patrocinador.direccion}
+  </p>
+)}
+
+{patrocinador.descripcion && (
+  <p style={{ fontSize: '14px', margin: '6px 0' }}>
+    {patrocinador.descripcion}
+  </p>
+)}
 
         {patrocinador.enlace && (
           <a
