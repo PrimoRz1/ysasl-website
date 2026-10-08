@@ -7,6 +7,8 @@ export default function PatrocinadoresAdminPage() {
   const [patrocinadores, setPatrocinadores] = useState([])
   const [nombre, setNombre] = useState('')
   const [telefono, setTelefono] = useState('')
+  const [direccion, setDireccion] = useState('')
+const [descripcion, setDescripcion] = useState('')
   const [enlace, setEnlace] = useState('')
   const [imagenUrl, setImagenUrl] = useState('')
   const [archivoImagen, setArchivoImagen] = useState(null)
@@ -39,6 +41,8 @@ export default function PatrocinadoresAdminPage() {
   function limpiarFormulario() {
     setNombre('')
     setTelefono('')
+    setDireccion('')
+    setDescripcion('')
     setEnlace('')
     setImagenUrl('')
     setArchivoImagen(null)
@@ -89,6 +93,8 @@ export default function PatrocinadoresAdminPage() {
       const datos = {
         nombre: nombre.trim(),
         telefono: telefono.trim() || null,
+        direccion: direccion.trim() || null,
+        descripcion: descripcion.trim() || null,
         enlace: enlace.trim() || null,
         imagen_url: urlFinal,
         tipo,
@@ -140,6 +146,8 @@ export default function PatrocinadoresAdminPage() {
     setEditandoId(patrocinador.id)
     setNombre(patrocinador.nombre || '')
     setTelefono(patrocinador.telefono || '')
+    setDireccion(patrocinador.direccion || '')
+    setDescripcion(patrocinador.descripcion || '')
     setEnlace(patrocinador.enlace || '')
     setImagenUrl(patrocinador.imagen_url || '')
     setArchivoImagen(null)
@@ -249,6 +257,25 @@ export default function PatrocinadoresAdminPage() {
             }}
           />
         </div>
+            <div>
+  <label><strong>Dirección del negocio</strong></label>
+  <input
+    type="text"
+    value={direccion}
+    onChange={(e) => setDireccion(e.target.value)}
+    style={{ display: 'block', width: '100%', padding: '10px', marginTop: '5px' }}
+  />
+</div>
+
+<div>
+  <label><strong>Descripción del negocio</strong></label>
+  <textarea
+    value={descripcion}
+    onChange={(e) => setDescripcion(e.target.value)}
+    rows={4}
+    style={{ display: 'block', width: '100%', padding: '10px', marginTop: '5px' }}
+  />
+</div>
 
         <div>
           <label><strong>Enlace / página web</strong></label>
