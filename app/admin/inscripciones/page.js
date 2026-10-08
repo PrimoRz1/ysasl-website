@@ -65,7 +65,48 @@ export default function AdminInscripciones() {
 
     setProcesando(id)
     setMensaje('')
+    const solicitud = solicitudes.find((s) => s.id === id)
 
+if (estado === 'aprobada') {
+  if (!solicitud?.division_id || !solicitud?.temporada_id) {
+    setMensaje('La solicitud no tiene un torneo o división válidos.')
+    setProcesando(null)
+    return
+  }
+}
+if (estado === 'aprobada') {
+  const nombre = solicitud.nombre_equipo.trim()
+
+  const { data: existente, error: errorBusqueda } = await supabase
+    .from('equipos')
+    .select('id')
+    .eq('division_id', solicitud.division_id)
+    .eq('nombre', nombre)
+    .maybeSingle()
+
+  if (errorBusqueda) {
+    setMensaje('Error al verificar el equipo: ' + errorBusqueda.message)
+    setProcesando(null)
+    return
+  }
+
+  if (!existente) {
+    const { error: errorEquipo } = await supabase
+      .from('equipos')
+      .insert({
+        nombre: nombre,
+        division_id: solicitud.division_id,
+        telefono: solicitud.telefono,
+        activo: true
+      })
+
+    if (errorEquipo) {
+      setMensaje('No se pudo registrar el equipo: ' + errorEquipo.message)
+      setProcesando(null)
+      return
+    }
+  }
+}
     const { data, error } = await supabase
       .from('solicitudes_inscripcion')
       .update({ estado })
