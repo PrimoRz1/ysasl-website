@@ -76,6 +76,9 @@ export default function RootLayout({ children }) {
   INSCRIBIR MI EQUIPO
 </Link>
 
+              <Link href="/admin" style={linkStyle}>
+  ADMINISTRACIÓN
+</Link>
             </nav>
           </div>
                 </header>
