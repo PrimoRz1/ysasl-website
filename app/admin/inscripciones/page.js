@@ -74,6 +74,7 @@ if (estado === 'aprobada') {
     return
   }
 }
+    let equipoId = null
 if (estado === 'aprobada') {
   const nombre = solicitud.nombre_equipo.trim()
 
@@ -91,7 +92,7 @@ if (estado === 'aprobada') {
   }
 
   if (!existente) {
-    const { error: errorEquipo } = await supabase
+    const { data: nuevoEquipo, error: errorEquipo } = await supabase
       .from('equipos')
       .insert({
         nombre: nombre,
@@ -99,14 +100,40 @@ if (estado === 'aprobada') {
         telefono: solicitud.telefono,
         activo: true
       })
+    .select('id')
+.single()
 
     if (errorEquipo) {
       setMensaje('No se pudo registrar el equipo: ' + errorEquipo.message)
       setProcesando(null)
       return
     }
+    equipoId = nuevoEquipo.id
+  }
+    
+    if (estado === 'aprobada' && solicitud.division_id) {
+  if (existente) equipoId = existente.id
+
+  if (equipoId) {
+    const { error: errorInscripcion } = await supabase
+      .from('inscripciones_equipo')
+      .upsert(
+        {
+          equipo_id: equipoId,
+          division_id: solicitud.division_id,
+          activo: true
+        },
+        { onConflict: 'equipo_id,division_id' }
+      )
+
+    if (errorInscripcion) {
+      setMensaje('Error al inscribir el equipo: ' + errorInscripcion.message)
+      setProcesando(null)
+      return
+    }
   }
 }
+  }
     const { data, error } = await supabase
       .from('solicitudes_inscripcion')
       .update({ estado })
