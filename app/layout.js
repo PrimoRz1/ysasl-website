@@ -71,6 +71,11 @@ export default function RootLayout({ children }) {
               <Link href="/patrocinadores" style={linkStyle}>
   PATROCINADORES
 </Link>
+              
+<Link href="/inscripciones" style={linkStyle}>
+  INSCRIBIR MI EQUIPO
+</Link>
+
             </nav>
           </div>
                 </header>
