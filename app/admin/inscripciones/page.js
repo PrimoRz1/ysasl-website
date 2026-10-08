@@ -46,7 +46,7 @@ export default function AdminInscripciones() {
 
     const { data, error } = await supabase
       .from('solicitudes_inscripcion')
-      .select('id, nombre_equipo, representante, telefono, correo, estado, created_at')
+      .select('id, nombre_equipo, representante, telefono, correo, estado, created_at, temporada_id, division_id, temporadas(nombre), divisiones(nombre)')
       .order('created_at', { ascending: false })
 
     if (error) {
@@ -116,6 +116,8 @@ export default function AdminInscripciones() {
               }}
             >
               <h2>{s.nombre_equipo}</h2>
+              <p><strong>Torneo:</strong> {s.temporadas?.nombre || 'No especificado'}</p>
+<p><strong>División:</strong> {s.divisiones?.nombre || 'No especificada'}</p>
               <p><strong>Representante:</strong> {s.representante}</p>
               <p><strong>Teléfono:</strong> {s.telefono}</p>
               <p><strong>Correo:</strong> {s.correo}</p>
