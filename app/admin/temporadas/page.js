@@ -84,7 +84,7 @@ async function eliminarDivision(division) {
   async function cargarTemporadas() {
     const { data, error } = await supabase
       .from('temporadas')
-      .select('id, nombre, activa, fecha_inicio, fecha_fin, formato')
+      .select('id, nombre, activa, fecha_inicio, fecha_fin, formato, inscripciones_abiertas')
       .order('id', { ascending: false })
 
     if (error) {
@@ -94,6 +94,28 @@ async function eliminarDivision(division) {
 
     setTemporadas(data || [])
   }
+  async function cambiarInscripciones(temporada) {
+  const nuevoEstado = !temporada.inscripciones_abiertas
+
+  const { error } = await supabase
+    .from('temporadas')
+    .update({ inscripciones_abiertas: nuevoEstado })
+    .eq('id', temporada.id)
+
+  if (error) {
+    console.error(error)
+    setMensaje('Error al cambiar las inscripciones.')
+    return
+  }
+
+  setMensaje(
+    nuevoEstado
+      ? 'Inscripciones abiertas correctamente.'
+      : 'Inscripciones cerradas correctamente.'
+  )
+
+  await cargarTemporadas()
+}
   async function cargarDivisiones() {
   const { data, error } = await supabase
     .from('divisiones')
@@ -343,7 +365,32 @@ if (errorDias) {
               </span>
             )}
 
-            <div style={{ marginTop: '8px' }}>
+            <div style={{ marginTop: '12px' }}>
+  <button
+    type="button"
+    onClick={() => cambiarInscripciones(temporada)}
+    style={{
+      padding: '10px 16px',
+      background: temporada.inscripciones_abiertas ? '#b91c1c' : '#15803d',
+      color: 'white',
+      border: 'none',
+      borderRadius: '6px',
+      cursor: 'pointer',
+      fontWeight: 'bold'
+    }}
+  >
+    {temporada.inscripciones_abiertas
+      ? 'Cerrar inscripciones'
+      : 'Abrir inscripciones'}
+  </button>
+
+  <span style={{ marginLeft: '12px' }}>
+    {temporada.inscripciones_abiertas
+      ? 'Inscripciones abiertas'
+      : 'Inscripciones cerradas'}
+  </span>
+</div>
+              <div style={{ marginTop: '8px' }}>
               Inicio: {temporada.fecha_inicio || 'Sin fecha'}
               {' — '}
               Final: {temporada.fecha_fin || 'Sin fecha'}
