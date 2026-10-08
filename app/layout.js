@@ -72,7 +72,27 @@ export default function RootLayout({ children }) {
 </Link>
             </nav>
           </div>
-        </header>
+                </header>
+
+        <section
+          style={{
+            maxWidth: '1100px',
+            margin: '20px auto',
+            padding: '0 15px',
+            textAlign: 'center',
+          }}
+        >
+          <div
+            style={{
+              background: '#f4f7fb',
+              border: '1px solid #ddd',
+              borderRadius: '10px',
+              padding: '25px',
+            }}
+          >
+            Espacio para banners publicitarios de YSASL
+          </div>
+        </section>
 
         {children}
 
