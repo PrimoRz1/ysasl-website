@@ -225,6 +225,25 @@ const [filtroEquipo, setFiltroEquipo] = useState('')
       >
         ← Volver al panel
       </button>
+          
+<div style={{ marginBottom: '25px' }}>
+  <button
+    type="button"
+    onClick={() => router.push('/admin/equipos')}
+    style={{ padding: '10px 15px', marginRight: '10px', cursor: 'pointer' }}
+  >
+    ← Volver a Equipos
+  </button>
+
+  <button
+    type="button"
+    onClick={() => router.push('/admin/resultados')}
+    style={{ padding: '10px 15px', cursor: 'pointer' }}
+  >
+    Continuar a Resultados →
+  </button>
+</div>
+
 
       <h1>Administrar Jugadores</h1>
       <p>Agrega, edita y administra los jugadores de YSASL.</p>
