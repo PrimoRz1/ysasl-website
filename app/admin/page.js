@@ -69,7 +69,10 @@ export default function AdminPage() {
         <AdminCard titulo="Resultados" descripcion="Registrar resultados" href="/admin/resultados" />
         <AdminCard titulo="Disciplina" descripcion="Tarjetas y suspensiones" href="/admin/disciplina" />
         <AdminCard titulo="Patrocinadores" descripcion="Administrar patrocinadores" href="/admin/patrocinadores" />
-      </div>
+      <AdminCard title="Torneos" descripcion="Crear y administrar torneos y divisiones" href="/admin/temporadas" />
+<AdminCard title="Inscripciones" descripcion="Revisar y aprobar solicitudes de equipos" href="/admin/inscripciones" />
+
+        </div>
     </main>
   )
 }
