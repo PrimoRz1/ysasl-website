@@ -1127,6 +1127,7 @@ await cargarPartidosJornada(jornadaId)
   }}
 >
   ← Volver a Temporadas
+      </button>
     <button
   type="button"
   onClick={() => router.push('/admin/equipos')}
