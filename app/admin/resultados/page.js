@@ -516,6 +516,25 @@ function agregarGoleador(partido, equipoId) {
         fontFamily: 'Arial, sans-serif',
       }}
     >
+      
+<div style={{ marginBottom: '25px' }}>
+  <button
+    type="button"
+    onClick={() => window.location.href = '/admin/jugadores'}
+    style={{ padding: '10px 15px', marginRight: '10px', cursor: 'pointer' }}
+  >
+    ← Volver a Jugadores
+  </button>
+
+  <button
+    type="button"
+    onClick={() => window.location.href = '/admin/disciplina'}
+    style={{ padding: '10px 15px', cursor: 'pointer' }}
+  >
+    Continuar a Disciplina →
+  </button>
+</div>
+
       <h1>Administrar resultados</h1>
 
       <p>
