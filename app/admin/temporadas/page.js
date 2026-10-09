@@ -190,7 +190,24 @@ if (errorDias) {
 
   return (
     <main style={{ maxWidth: '1000px', margin: '40px auto', padding: '20px' }}>
-      <h1>Administrar Torneos</h1>
+  <div style={{ marginBottom: '25px' }}>
+  <button
+    type="button"
+    onClick={() => window.location.href = '/admin/inscripciones'}
+    style={{ padding: '10px 15px', cursor: 'pointer' }}
+  >
+    ← Volver a Inscripciones
+  </button>
+
+  <button
+    type="button"
+    onClick={() => window.location.href = '/admin/partidos'}
+    style={{ marginLeft: '10px', padding: '10px 15px', cursor: 'pointer' }}
+  >
+    Continuar a Partidos →
+  </button>
+</div>    
+  <h1>Administrar Torneos</h1>
 
       <p>
         Desde aquí podrás crear y administrar los torneos de YSASL.
