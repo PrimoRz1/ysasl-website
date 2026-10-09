@@ -111,6 +111,16 @@ preferenciasError
     }
 
     setTemporadas(temporadasData || [])
+    const torneoDesdeUrl = new URLSearchParams(window.location.search).get('temporada')
+
+if (
+  torneoDesdeUrl &&
+  (temporadasData || []).some(
+    (t) => String(t.id) === torneoDesdeUrl
+  )
+) {
+  setTemporadaId(torneoDesdeUrl)
+}
     setDivisiones(divisionesData || [])
     setEquipos(equiposData || [])
     setInscripciones(inscripcionesData || [])
