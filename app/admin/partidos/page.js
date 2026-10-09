@@ -1117,7 +1117,27 @@ await cargarPartidosJornada(jornadaId)
       >
         ← Volver al panel
       </button>
-
+<button
+  type="button"
+  onClick={() => router.push('/admin/temporadas')}
+  style={{
+    marginLeft: '10px',
+    padding: '10px 15px',
+    cursor: 'pointer'
+  }}
+>
+  ← Volver a Temporadas
+    <button
+  type="button"
+  onClick={() => router.push('/admin/equipos')}
+  style={{
+    marginLeft: '10px',
+    padding: '10px 15px',
+    cursor: 'pointer'
+  }}
+>
+  Continuar a Equipos →
+</button>
       <h1>Administrar Partidos</h1>
 
       <p>
