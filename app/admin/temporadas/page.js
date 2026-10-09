@@ -398,6 +398,22 @@ if (errorDias) {
               <div style={{ marginTop: '5px' }}>
   Formato: {temporada.formato === 'ida' ? 'Ida solamente' : 'Ida y vuelta'}
 </div>
+  <div style={{ marginTop: '15px' }}>
+  <a
+    href={`/admin/partidos?temporada=${temporada.id}`}
+    style={{
+      display: 'inline-block',
+      padding: '10px 16px',
+      background: '#0b2341',
+      color: 'white',
+      textDecoration: 'none',
+      borderRadius: '6px',
+      fontWeight: 'bold'
+    }}
+  >
+    Continuar configuración →
+  </a>
+</div>
           <div style={{ marginTop: '15px' }}>
   <strong>Divisiones</strong>
 
