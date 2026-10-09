@@ -8,6 +8,7 @@ export default function AdminPartidosPage() {
   const router = useRouter()
 
   const [temporadas, setTemporadas] = useState([])
+  const [temporadaId, setTemporadaId] = useState('')
   const [divisiones, setDivisiones] = useState([])
   const [jornadaId, setJornadaId] = useState('')
 const [localId, setLocalId] = useState('')
