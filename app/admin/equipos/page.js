@@ -107,6 +107,23 @@ export default function AdminEquiposPage() {
 
   return (
     <main style={{ maxWidth: '1000px', margin: '40px auto', padding: '20px' }}>
+  <div style={{ marginBottom: '25px' }}>
+  <button
+    type="button"
+    onClick={() => window.location.href = '/admin/partidos'}
+    style={{ padding: '10px 15px', cursor: 'pointer' }}
+  >
+    ← Volver a Partidos
+  </button>
+
+  <button
+    type="button"
+    onClick={() => window.location.href = '/admin/jugadores'}
+    style={{ marginLeft: '10px', padding: '10px 15px', cursor: 'pointer' }}
+  >
+    Continuar a Jugadores →
+  </button>
+</div>
       <h1>Administrar Equipos</h1>
 
       <p>Desde aquí podrás agregar y administrar los equipos de YSASL.</p>
