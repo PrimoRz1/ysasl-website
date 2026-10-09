@@ -40,6 +40,17 @@ const [jornadaId, setJornadaId] = useState('')
       setPartidos([])
     } else {
       setPartidos(data || [])
+      setGoles(
+  Object.fromEntries(
+    (data || []).map((partido) => [
+      partido.id,
+      {
+        local: partido.goles_local ?? '',
+        visitante: partido.goles_visitante ?? ''
+      }
+    ])
+  )
+)
     }
 
     setCargando(false)
