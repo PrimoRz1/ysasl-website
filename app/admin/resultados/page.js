@@ -31,7 +31,6 @@ const [jornadaId, setJornadaId] = useState('')
     const { data, error } = await supabase
       .from('calendario_partidos')
       .select('*')
-      .neq('estado', 'finalizado')
       .order('fecha', { ascending: true })
       .order('hora', { ascending: true })
 
