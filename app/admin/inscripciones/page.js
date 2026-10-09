@@ -159,7 +159,24 @@ if (estado === 'aprobada') {
 
   return (
     <main style={{ maxWidth: 1100, margin: '40px auto', padding: 20 }}>
-      <h1>Solicitudes de inscripción</h1>
+    <div style={{ marginBottom: '25px' }}>
+  <button
+    type="button"
+    onClick={() => window.location.href = '/admin/disciplina'}
+    style={{ padding: '10px 15px', cursor: 'pointer' }}
+  >
+    ← Volver a Disciplina
+  </button>
+
+  <button
+    type="button"
+    onClick={() => window.location.href = '/admin/temporadas'}
+    style={{ marginLeft: '10px', padding: '10px 15px', cursor: 'pointer' }}
+  >
+    Continuar a Temporadas →
+  </button>
+</div>  
+    <h1>Solicitudes de inscripción</h1>
       <p>Revisa las solicitudes enviadas por los equipos de YSASL.</p>
 
       <button onClick={cargarSolicitudes} disabled={cargando}>
