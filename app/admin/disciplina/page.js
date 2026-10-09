@@ -121,6 +121,23 @@ export default function AdminDisciplinaPage() {
         padding: '40px 24px',
       }}
     >
+      <div style={{ marginBottom: '25px' }}>
+  <button
+    type="button"
+    onClick={() => window.location.href = '/admin/resultados'}
+    style={{ padding: '10px 15px', cursor: 'pointer' }}
+  >
+    ← Volver a Resultados
+  </button>
+
+  <button
+    type="button"
+    onClick={() => window.location.href = '/admin/inscripciones'}
+    style={{ marginLeft: '10px', padding: '10px 15px', cursor: 'pointer' }}
+  >
+    Continuar a Inscripciones →
+  </button>
+</div>
       <h1 style={{ fontSize: '36px', marginBottom: '10px' }}>
         Administrar Disciplina
       </h1>
