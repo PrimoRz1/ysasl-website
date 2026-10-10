@@ -96,6 +96,11 @@ export default function ConfigurarTorneoPage() {
   const [divisionId, setDivisionId] = useState('')
   const [nombreEquipo, setNombreEquipo] = useState('')
   const [equipoExistenteId, setEquipoExistenteId] = useState('')
+  // Gestión de inscripciones: editar nombre, mover de división o retirar.
+  const [equipoGestionId, setEquipoGestionId] = useState(null)
+  const [accionEquipo, setAccionEquipo] = useState('')
+  const [nombreEquipoEditado, setNombreEquipoEditado] = useState('')
+  const [divisionDestinoId, setDivisionDestinoId] = useState('')
   const [horariosElegidos, setHorariosElegidos] = useState(['09:00', '11:00', '13:00', '15:00'])
   const [camposElegidos, setCamposElegidos] = useState(null)
   const [plan, setPlan] = useState(null)
@@ -163,6 +168,7 @@ export default function ConfigurarTorneoPage() {
   function elegirTorneo(id) {
     setTemporadaId(id)
     setDivisionId('')
+    cancelarGestionEquipo()
     setPlan(null)
     setMensaje('')
     const elegido = disponibles.find((t) => String(t.id) === id)
@@ -314,10 +320,19 @@ async function guardarFechaDivision(idDivision) {
         if (error) throw error
         id = data.id
       }
-      const { error } = await supabase.from('inscripciones_equipo').insert({
-        equipo_id: id, division_id: divisionActual.id, activo: true,
-      }).select('id').single()
-      if (error) throw new Error(`No se pudo inscribir el equipo ID ${id}: ${error.message}. Si lo acabas de crear, no vuelvas a crearlo.`)
+      // Si ya existía una inscripción retirada, se reactiva en lugar de duplicarla.
+      const { data: anterior, error: errorAnterior } = await supabase.from('inscripciones_equipo')
+        .select('id, activo').eq('equipo_id', id).eq('division_id', divisionActual.id).maybeSingle()
+      if (errorAnterior) throw errorAnterior
+      if (anterior?.activo) throw new Error('Este equipo ya está inscrito en esta división.')
+      const resultado = anterior
+        ? await supabase.from('inscripciones_equipo').update({ activo: true }).eq('id', anterior.id).eq('activo', false).select('id')
+        : await supabase.from('inscripciones_equipo').insert({
+          equipo_id: id, division_id: divisionActual.id, activo: true,
+        }).select('id')
+      if (resultado.error || !resultado.data?.length) {
+        throw new Error(`No se pudo inscribir el equipo ID ${id}: ${resultado.error?.message || 'no se actualizó el registro'}. Si lo acabas de crear, no vuelvas a crearlo.`)
+      }
       setNombreEquipo('')
       setEquipoExistenteId('')
       setPlan(null)
@@ -325,6 +340,168 @@ async function guardarFechaDivision(idDivision) {
       setMensaje('Equipo inscrito correctamente.')
     } catch (error) {
       setMensaje(error.message)
+    } finally {
+      setTrabajando(false)
+    }
+  }
+
+  function cancelarGestionEquipo() {
+    setEquipoGestionId(null)
+    setAccionEquipo('')
+    setNombreEquipoEditado('')
+    setDivisionDestinoId('')
+  }
+
+  function iniciarGestionEquipo(equipo, accion) {
+    if (trabajando) return
+    setEquipoGestionId(Number(equipo.id))
+    setAccionEquipo(accion)
+    setNombreEquipoEditado(equipo.nombre)
+    setDivisionDestinoId('')
+    setMensaje('')
+  }
+
+  function comprobarTorneoEditable() {
+    if (!temporada || Number(temporada.id) === TEMPORADA_PROTEGIDA || temporada.activa) {
+      throw new Error('Solo se pueden administrar equipos de torneos nuevos en preparación.')
+    }
+    if (!divisionActual || Number(divisionActual.temporada_id) !== Number(temporada.id)) {
+      throw new Error('Selecciona una división válida de este torneo.')
+    }
+  }
+
+  async function comprobarInscripcionActiva(equipoId) {
+    const { data, error } = await supabase.from('inscripciones_equipo')
+      .select('id, equipo_id, division_id, activo')
+      .eq('equipo_id', equipoId)
+      .eq('division_id', divisionActual.id)
+      .eq('activo', true)
+      .maybeSingle()
+    if (error) throw error
+    if (!data) throw new Error('La inscripción ya cambió. Actualiza la página antes de continuar.')
+    return data
+  }
+
+  async function comprobarSinJornadas(idsDivisiones) {
+    // No permitir cambios de inscripción cuando existe calendario en origen o destino.
+    const { data, error } = await supabase.from('jornadas')
+      .select('id, division_id').in('division_id', idsDivisiones).limit(1)
+    if (error) throw error
+    if (data?.length) {
+      throw new Error('No se puede mover o retirar: alguna de estas divisiones ya tiene jornadas creadas. Revisa primero el calendario.')
+    }
+  }
+
+  async function guardarNombreEquipo(equipo) {
+    if (trabajando) return
+    const nuevoNombre = nombreEquipoEditado.trim()
+    if (!nuevoNombre) return setMensaje('Escribe el nombre del equipo.')
+    if (nuevoNombre === equipo.nombre) {
+      cancelarGestionEquipo()
+      return
+    }
+    if (equipos.some((e) => Number(e.id) !== Number(equipo.id) && e.nombre.trim().toLowerCase() === nuevoNombre.toLowerCase())) {
+      return setMensaje('Ya existe otro equipo con ese nombre.')
+    }
+    setTrabajando(true)
+    setMensaje('')
+    try {
+      comprobarTorneoEditable()
+      await comprobarInscripcionActiva(equipo.id)
+      // El nombre pertenece al equipo global, no a una temporada: proteger equipos reutilizados.
+      const { data: usos, error: errorUsos } = await supabase.from('inscripciones_equipo')
+        .select('division_id').eq('equipo_id', equipo.id)
+      if (errorUsos) throw errorUsos
+      const idsEsteTorneo = new Set(divisionesTorneo.map((d) => Number(d.id)))
+      if ((usos || []).some((i) => !idsEsteTorneo.has(Number(i.division_id)))) {
+        throw new Error('Este equipo también pertenece a otro torneo. Para no cambiar su nombre en temporadas anteriores, edítalo desde la administración general de equipos.')
+      }
+      const { data, error } = await supabase.from('equipos')
+        .update({ nombre: nuevoNombre })
+        .eq('id', equipo.id)
+        .eq('nombre', equipo.nombre)
+        .select('id')
+      if (error) throw error
+      if (!data?.length) throw new Error('No se guardó el cambio. Es posible que otro administrador haya modificado el equipo.')
+      cancelarGestionEquipo()
+      setPlan(null)
+      await cargarDatos()
+      setMensaje(`Nombre actualizado: ${nuevoNombre}.`)
+    } catch (error) {
+      setMensaje(`No se pudo editar el nombre: ${error.message}`)
+    } finally {
+      setTrabajando(false)
+    }
+  }
+
+  async function moverEquipo(equipo) {
+    if (trabajando) return
+    const destino = divisionesTorneo.find((d) => String(d.id) === divisionDestinoId)
+    if (!destino || Number(destino.id) === Number(divisionActual?.id)) {
+      return setMensaje('Selecciona otra división del mismo torneo.')
+    }
+    if (!window.confirm(`¿Mover a ${equipo.nombre} de ${divisionActual.nombre} a ${destino.nombre}?`)) return
+    setTrabajando(true)
+    setMensaje('')
+    try {
+      comprobarTorneoEditable()
+      if (Number(destino.temporada_id) !== Number(temporada.id)) throw new Error('La división destino no pertenece a este torneo.')
+      const actual = await comprobarInscripcionActiva(equipo.id)
+      await comprobarSinJornadas([Number(divisionActual.id), Number(destino.id)])
+      const { data: inscripcionesEquipo, error: errorInscripciones } = await supabase.from('inscripciones_equipo')
+        .select('id, division_id, activo').eq('equipo_id', equipo.id)
+        .in('division_id', divisionesTorneo.map((d) => d.id))
+      if (errorInscripciones) throw errorInscripciones
+      if ((inscripcionesEquipo || []).some((i) => Number(i.division_id) === Number(destino.id))) {
+        throw new Error('Este equipo ya tuvo una inscripción en la división destino. Retíralo de la división actual y después inscríbelo en la división destino como equipo existente; se reactivará sin duplicarlo.')
+      }
+      if ((inscripcionesEquipo || []).some((i) => i.activo && Number(i.division_id) !== Number(divisionActual.id))) {
+        throw new Error('El equipo ya aparece inscrito en otra división de este torneo.')
+      }
+      const { data, error } = await supabase.from('inscripciones_equipo')
+        .update({ division_id: destino.id })
+        .eq('id', actual.id)
+        .eq('equipo_id', equipo.id)
+        .eq('division_id', divisionActual.id)
+        .eq('activo', true)
+        .select('id')
+      if (error) throw error
+      if (!data?.length) throw new Error('No se movió el equipo. Recarga la página para revisar su inscripción.')
+      cancelarGestionEquipo()
+      setPlan(null)
+      await cargarDatos()
+      setMensaje(`${equipo.nombre} se movió a ${destino.nombre}.`)
+    } catch (error) {
+      setMensaje(`No se pudo cambiar la división: ${error.message}`)
+    } finally {
+      setTrabajando(false)
+    }
+  }
+
+  async function retirarEquipo(equipo) {
+    if (trabajando) return
+    if (!window.confirm(`¿Retirar a ${equipo.nombre} de ${divisionActual?.nombre}? El equipo no se borrará y podrá inscribirse de nuevo.`)) return
+    setTrabajando(true)
+    setMensaje('')
+    try {
+      comprobarTorneoEditable()
+      const actual = await comprobarInscripcionActiva(equipo.id)
+      await comprobarSinJornadas([Number(divisionActual.id)])
+      const { data, error } = await supabase.from('inscripciones_equipo')
+        .update({ activo: false })
+        .eq('id', actual.id)
+        .eq('equipo_id', equipo.id)
+        .eq('division_id', divisionActual.id)
+        .eq('activo', true)
+        .select('id')
+      if (error) throw error
+      if (!data?.length) throw new Error('No se retiró la inscripción. Recarga la página para revisar.')
+      cancelarGestionEquipo()
+      setPlan(null)
+      await cargarDatos()
+      setMensaje(`${equipo.nombre} fue retirado de ${divisionActual.nombre}. El equipo sigue guardado.`)
+    } catch (error) {
+      setMensaje(`No se pudo retirar el equipo: ${error.message}`)
     } finally {
       setTrabajando(false)
     }
@@ -618,13 +795,59 @@ for (const jornada of plan.definiciones) {
 
         <section style={caja}>
           <h2>3. Inscribir equipos</h2>
-          <select value={divisionId} onChange={(e) => { setDivisionId(e.target.value); setPlan(null) }} style={control}>
+          <select value={divisionId} onChange={(e) => { setDivisionId(e.target.value); cancelarGestionEquipo(); setPlan(null) }} style={control} disabled={trabajando}>
             <option value="">Selecciona una división</option>
             {divisionesTorneo.map((d) => <option key={d.id} value={d.id}>{d.nombre}</option>)}
           </select>
           {divisionActual && <>
             <p><strong>{equiposDivision(divisionActual.id).length} equipos inscritos</strong></p>
-            <p>{equiposDivision(divisionActual.id).map((e) => e.nombre).join(', ') || 'Sin equipos todavía'}</p>
+            {equiposDivision(divisionActual.id).length === 0 && <p>Sin equipos todavía.</p>}
+            <div style={{ display: 'grid', gap: 10, margin: '12px 0 20px' }}>
+              {equiposDivision(divisionActual.id).map((equipo) => (
+                <div key={equipo.id} style={{ border: '1px solid #ddd', borderRadius: 8, padding: 12 }}>
+                  <strong>{equipo.nombre}</strong>
+                  <div style={{ marginTop: 6 }}>
+                    <button type="button" style={{ ...boton, padding: '7px 10px' }} disabled={trabajando}
+                      onClick={() => iniciarGestionEquipo(equipo, 'editar')}>Editar nombre</button>
+                    <button type="button" style={{ ...boton, padding: '7px 10px' }} disabled={trabajando || divisionesTorneo.length < 2}
+                      onClick={() => iniciarGestionEquipo(equipo, 'mover')}>Cambiar división</button>
+                    <button type="button" style={{ ...boton, padding: '7px 10px' }} disabled={trabajando}
+                      onClick={() => retirarEquipo(equipo)}>Retirar del torneo</button>
+                  </div>
+                  {equipoGestionId === Number(equipo.id) && accionEquipo === 'editar' && (
+                    <div style={{ marginTop: 8 }}>
+                      <label>Nuevo nombre:
+                        <input value={nombreEquipoEditado} onChange={(e) => setNombreEquipoEditado(e.target.value)}
+                          style={control} disabled={trabajando} />
+                      </label>
+                      <div>
+                        <button type="button" style={boton} disabled={trabajando || !nombreEquipoEditado.trim()}
+                          onClick={() => guardarNombreEquipo(equipo)}>Guardar nombre</button>
+                        <button type="button" style={boton} disabled={trabajando} onClick={cancelarGestionEquipo}>Cancelar</button>
+                      </div>
+                    </div>
+                  )}
+                  {equipoGestionId === Number(equipo.id) && accionEquipo === 'mover' && (
+                    <div style={{ marginTop: 8 }}>
+                      <label>División destino:
+                        <select value={divisionDestinoId} onChange={(e) => setDivisionDestinoId(e.target.value)}
+                          style={control} disabled={trabajando}>
+                          <option value="">Selecciona la división destino</option>
+                          {divisionesTorneo.filter((d) => Number(d.id) !== Number(divisionActual.id)).map((d) => (
+                            <option key={d.id} value={d.id}>{d.nombre}</option>
+                          ))}
+                        </select>
+                      </label>
+                      <div>
+                        <button type="button" style={boton} disabled={trabajando || !divisionDestinoId}
+                          onClick={() => moverEquipo(equipo)}>Confirmar cambio</button>
+                        <button type="button" style={boton} disabled={trabajando} onClick={cancelarGestionEquipo}>Cancelar</button>
+                      </div>
+                    </div>
+                  )}
+                </div>
+              ))}
+            </div>
             <p>Crear un equipo nuevo:</p>
             <input value={nombreEquipo} onChange={(e) => { setNombreEquipo(e.target.value); setEquipoExistenteId('') }} placeholder="Nombre del equipo" style={control} />
             <p>O reutilizar un equipo existente de otra temporada:</p>
