@@ -32,7 +32,15 @@ function sumarSemanas(fecha, semanas) {
   nueva.setUTCDate(nueva.getUTCDate() + semanas * 7)
   return nueva.toISOString().slice(0, 10)
 }
+function seTraslapan(horaA, horaB) {
+  const [hA, mA] = String(horaA).slice(0, 5).split(':').map(Number)
+  const [hB, mB] = String(horaB).slice(0, 5).split(':').map(Number)
 
+  const minutosA = hA * 60 + mA
+  const minutosB = hB * 60 + mB
+
+  return Math.abs(minutosA - minutosB) < 120
+}
 function crearCruces(ids, formato) {
   const original = [...ids]
   if (original.length % 2) original.push(null) // Descanso para división impar
@@ -83,6 +91,7 @@ export default function ConfigurarTorneoPage() {
   const [formato, setFormato] = useState('ida_vuelta')
   const [duracion, setDuracion] = useState('90')
   const [fechaCorregida, setFechaCorregida] = useState('')
+  const [fechasDivisiones, setFechasDivisiones] = useState({})
   const [nombreDivision, setNombreDivision] = useState('')
   const [divisionId, setDivisionId] = useState('')
   const [nombreEquipo, setNombreEquipo] = useState('')
@@ -113,7 +122,7 @@ export default function ConfigurarTorneoPage() {
   async function cargarDatos() {
     const resultados = await Promise.all([
       supabase.from('temporadas').select('id, nombre, activa, fecha_inicio, formato').order('id', { ascending: false }),
-      supabase.from('divisiones').select('id, nombre, temporada_id, orden').order('orden'),
+      supabase.from('divisiones').select('id, nombre, temporada_id, orden, fecha_inicio').order('orden'),
       supabase.from('equipos').select('id, nombre, activo').order('nombre'),
       supabase.from('inscripciones_equipo').select('id, equipo_id, division_id, activo'),
       supabase.from('campos').select('id, nombre, numero, activo').eq('activo', true).order('numero'),
@@ -218,7 +227,50 @@ export default function ConfigurarTorneoPage() {
       setTrabajando(false)
     }
   }
+async function guardarFechaDivision(idDivision) {
+  if (!temporada || trabajando || Number(temporada.id) === TEMPORADA_PROTEGIDA) return
 
+  const division = divisionesTorneo.find(d => Number(d.id) === Number(idDivision))
+  if (!division) return
+
+  const fecha = fechasDivisiones[idDivision] ?? division.fecha_inicio ?? ''
+  if (!fecha) return setMensaje('Selecciona una fecha para la división.')
+
+  setTrabajando(true)
+  setMensaje('')
+
+  try {
+    const { data: jornadas, error: errorJornadas } = await supabase
+      .from('jornadas')
+      .select('id')
+      .eq('division_id', idDivision)
+      .limit(1)
+
+    if (errorJornadas) throw errorJornadas
+
+    if (jornadas?.length) {
+      throw new Error('Esta división ya tiene jornadas. No se puede cambiar su fecha de inicio.')
+    }
+
+    const { data, error } = await supabase
+      .from('divisiones')
+      .update({ fecha_inicio: fecha })
+      .eq('id', idDivision)
+      .eq('temporada_id', temporada.id)
+      .select('id')
+
+    if (error) throw error
+    if (!data?.length) throw new Error('No se pudo guardar la fecha.')
+
+    await cargarDatos()
+    setPlan(null)
+    setMensaje(`Fecha de ${division.nombre} guardada correctamente.`)
+  } catch (error) {
+    setMensaje(`Error: ${error.message}`)
+  } finally {
+    setTrabajando(false)
+  }
+}
   async function agregarDivision() {
     if (!temporada || !nombreDivision.trim() || trabajando) return
     if (divisionesTorneo.some((d) => d.nombre.toLowerCase() === nombreDivision.trim().toLowerCase())) {
@@ -295,10 +347,17 @@ export default function ConfigurarTorneoPage() {
     try {
       if (!temporada.fecha_inicio) throw new Error('El torneo necesita una fecha de inicio. Corrígela arriba.')
       if (fechaCorregida !== temporada.fecha_inicio) throw new Error('Primero guarda el cambio de fecha de inicio.')
+      for (const division of divisionesTorneo) {
+  const fechaEnPantalla = fechasDivisiones[division.id] ?? division.fecha_inicio ?? ''
+  const fechaGuardada = division.fecha_inicio ?? ''
+
+  if (fechaEnPantalla !== fechaGuardada) {
+    throw new Error(`Primero guarda la fecha de inicio de ${division.nombre}.`)
+  }
+}
       if (!divisionesTorneo.length) throw new Error('Agrega por lo menos una división.')
       if (!horariosElegidos.length || !(camposElegidos || []).length) throw new Error('Selecciona horarios y campos.')
 
-      const fechaBase = siguienteDomingo(temporada.fecha_inicio)
       const definiciones = []
       const equipoEnDivision = new Set()
       for (const division of divisionesTorneo) {
@@ -312,9 +371,10 @@ export default function ConfigurarTorneoPage() {
         if (error) throw error
         if (yaExiste?.length) throw new Error(`${division.nombre} ya tiene jornadas. No generaremos un calendario duplicado.`)
         const cruces = crearCruces(lista.map((e) => e.id), temporada.formato)
+        const fechaBaseDivision = siguienteDomingo(division.fecha_inicio || temporada.fecha_inicio)
         cruces.forEach((partidos, indice) => definiciones.push({
           division_id: division.id, division_nombre: division.nombre,
-          numero: indice + 1, fecha: sumarSemanas(fechaBase, indice),
+          numero: indice + 1, fecha: sumarSemanas(fechaBaseDivision, indice),
           partidos: partidos.map((p) => ({ ...p })),
         }))
       }
@@ -327,10 +387,15 @@ export default function ConfigurarTorneoPage() {
       if (errorOcupados) throw errorOcupados
       const espaciosOcupados = new Map()
       for (const partido of ocupados || []) {
-        const clave = `${String(partido.hora).slice(0, 5)}-${Number(partido.campo_id)}`
-        if (!espaciosOcupados.has(partido.fecha)) espaciosOcupados.set(partido.fecha, new Set())
-        espaciosOcupados.get(partido.fecha).add(clave)
-      }
+  if (!espaciosOcupados.has(partido.fecha)) {
+    espaciosOcupados.set(partido.fecha, [])
+  }
+
+  espaciosOcupados.get(partido.fecha).push({
+    hora: String(partido.hora).slice(0, 5),
+    campo_id: Number(partido.campo_id)
+  })
+}
       const horariosOrdenados = [...horariosElegidos].sort()
       const camposOrdenados = campos.filter((c) => (camposElegidos || []).includes(Number(c.id)))
       const preferenciaDe = (equipoId) => preferencias.find((p) => Number(p.equipo_id) === Number(equipoId) && Number(p.temporada_id) === Number(temporada.id) && p.activo)
@@ -338,7 +403,7 @@ export default function ConfigurarTorneoPage() {
       // Agrupamos por fecha: evita que Primera y Segunda usen el mismo campo/hora.
       definiciones.sort((a, b) => a.fecha.localeCompare(b.fecha) || a.division_id - b.division_id || a.numero - b.numero)
       for (const jornada of definiciones) {
-        if (!espaciosOcupados.has(jornada.fecha)) espaciosOcupados.set(jornada.fecha, new Set())
+        if (!espaciosOcupados.has(jornada.fecha)) espaciosOcupados.set(jornada.fecha, [])
         const usados = espaciosOcupados.get(jornada.fecha)
         for (const partido of jornada.partidos) {
           const preferenciasPartido = [preferenciaDe(partido.local_id), preferenciaDe(partido.visitante_id)].filter(Boolean)
@@ -349,7 +414,10 @@ export default function ConfigurarTorneoPage() {
             if (obligatorias.length && hora !== obligatorias[0]) return
             camposOrdenados.forEach((campo, indiceCampo) => {
               const clave = `${hora}-${campo.id}`
-              if (usados.has(clave)) return
+              if (usados.some((ocupado) =>
+  Number(ocupado.campo_id) === Number(campo.id) &&
+  seTraslapan(ocupado.hora, hora)
+)) return
               const preferenciasSuaves = preferenciasPartido.filter((p) => p.tipo !== 'obligatoria' && String(p.hora).slice(0, 5) === hora).length
               opciones.push({ hora, campo_id: campo.id, clave, puntuacion: indiceHora * 10 + indiceCampo - preferenciasSuaves * 2 })
             })
@@ -359,7 +427,10 @@ export default function ConfigurarTorneoPage() {
           const elegido = opciones[0]
           partido.hora = elegido.hora
           partido.campo_id = elegido.campo_id
-          usados.add(elegido.clave)
+          usados.push({
+  hora: elegido.hora,
+  campo_id: Number(elegido.campo_id)
+})
         }
       }
 
@@ -391,14 +462,46 @@ export default function ConfigurarTorneoPage() {
         .select('fecha, hora, campo_id').in('fecha', fechas).not('hora', 'is', null).not('campo_id', 'is', null)
         .limit(10000)
       if (errorOcupados) throw errorOcupados
-      const ocupacion = new Set((ocupados || []).map((p) => `${p.fecha}|${String(p.hora).slice(0, 5)}|${p.campo_id}`))
-      for (const j of plan.definiciones) {
-        for (const p of j.partidos) {
-          if (ocupacion.has(`${j.fecha}|${p.hora}|${p.campo_id}`)) {
-            throw new Error(`El campo ${p.campo_id} a las ${p.hora} del ${j.fecha} se ocupó después de la vista previa. Prepárala otra vez.`)
-          }
-        }
-      }
+      const ocupacion = new Map()
+
+for (const partido of ocupados || []) {
+  if (!ocupacion.has(partido.fecha)) {
+    ocupacion.set(partido.fecha, [])
+  }
+
+  ocupacion.get(partido.fecha).push({
+    hora: String(partido.hora).slice(0, 5),
+    campo_id: Number(partido.campo_id)
+  })
+}
+
+for (const jornada of plan.definiciones) {
+  if (!ocupacion.has(jornada.fecha)) {
+    ocupacion.set(jornada.fecha, [])
+  }
+
+  const usados = ocupacion.get(jornada.fecha)
+
+  for (const partido of jornada.partidos) {
+    const conflicto = usados.some((ocupado) =>
+      Number(ocupado.campo_id) === Number(partido.campo_id) &&
+      seTraslapan(ocupado.hora, partido.hora)
+    )
+
+    if (conflicto) {
+      throw new Error(
+        `Conflicto detectado: Campo ${partido.campo_id}, ` +
+        `${jornada.fecha}, ${partido.hora}. ` +
+        `Vuelve a generar la vista previa.`
+      )
+    }
+
+    usados.push({
+      hora: String(partido.hora).slice(0, 5),
+      campo_id: Number(partido.campo_id)
+    })
+  }
+}
       let creadas = 0
       for (const j of plan.definiciones) {
         const { data, error } = await supabase.from('jornadas').insert({
@@ -467,7 +570,48 @@ export default function ConfigurarTorneoPage() {
           <label>Fecha de inicio <input type="date" value={fechaCorregida} onChange={(e) => setFechaCorregida(e.target.value)} style={control} /></label>
           <button type="button" style={boton} onClick={guardarFecha} disabled={trabajando || !fechaCorregida || fechaCorregida === temporada.fecha_inicio}>Guardar fecha</button>
           <h3>Divisiones</h3>
-          {divisionesTorneo.length ? <ul>{divisionesTorneo.map((d) => <li key={d.id}>{d.nombre} — {equiposDivision(d.id).length} equipos</li>)}</ul> : <p>Agrega la primera división.</p>}
+          {divisionesTorneo.length ? (
+  <ul>
+    {divisionesTorneo.map((d) => (
+      <li key={d.id} style={{ marginBottom: 15 }}>
+        <strong>{d.nombre}</strong> — {equiposDivision(d.id).length} equipos
+
+        <div>
+          <label>
+            Fecha de inicio de esta división:
+            <input
+              type="date"
+              value={fechasDivisiones[d.id] ?? d.fecha_inicio ?? ''}
+              onChange={(e) => {
+                setFechasDivisiones((actuales) => ({
+                  ...actuales,
+                  [d.id]: e.target.value
+                }))
+                setPlan(null)
+              }}
+              style={control}
+            />
+          </label>
+
+          <button
+            type="button"
+            style={boton}
+            onClick={() => guardarFechaDivision(d.id)}
+            disabled={
+              trabajando ||
+              !(fechasDivisiones[d.id] ?? d.fecha_inicio) ||
+              (fechasDivisiones[d.id] ?? d.fecha_inicio) === (d.fecha_inicio ?? '')
+            }
+          >
+            Guardar fecha
+          </button>
+        </div>
+      </li>
+    ))}
+  </ul>
+) : (
+  <p>Agrega la primera división.</p>
+)}
           <input value={nombreDivision} onChange={(e) => setNombreDivision(e.target.value)} placeholder="Ej. Primera División" style={control} />
           <button type="button" style={boton} onClick={agregarDivision} disabled={trabajando || !nombreDivision.trim()}>+ Agregar división</button>
         </section>
