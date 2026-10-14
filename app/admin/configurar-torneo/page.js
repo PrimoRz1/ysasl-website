@@ -8,12 +8,14 @@ import { supabase } from '../../../lib/supabase'
 // Configuración de torneos nuevos. No modifica calendarios ya existentes.
 // La temporada oficial Verano / Invierno 2026 (id 1) queda excluida.
 const TEMPORADA_PROTEGIDA = 1
+// Orden general de preferencia de YSASL: 11 AM, 1 PM, 9 AM y 3 PM.
 const HORARIOS = [
-  ['09:00', '9:00 AM'],
   ['11:00', '11:00 AM'],
   ['13:00', '1:00 PM'],
+  ['09:00', '9:00 AM'],
   ['15:00', '3:00 PM'],
 ]
+const COSTO_HORARIO = { '11:00': 0, '13:00': 8, '09:00': 45, '15:00': 200 }
 
 const caja = { border: '1px solid #ddd', borderRadius: 10, padding: 20, marginTop: 20 }
 const control = { padding: '9px', margin: '6px 10px 8px 0', maxWidth: '100%' }
@@ -41,6 +43,36 @@ function seTraslapan(horaA, horaB) {
 
   return Math.abs(minutosA - minutosB) < 120
 }
+// Leer TODOS los partidos de las fechas, incluyendo otras divisiones y temporadas.
+// Paginamos para no depender del límite predeterminado de Supabase.
+async function obtenerOcupacion(fechas) {
+  const ocupacion = new Map()
+  const tamanoPagina = 500
+  for (let i = 0; i < fechas.length; i += 20) {
+    const grupo = fechas.slice(i, i + 20)
+    for (let inicio = 0; ; inicio += tamanoPagina) {
+      const { data, error } = await supabase.from('partidos')
+        .select('id, fecha, hora, campo_id, estado')
+        .in('fecha', grupo)
+        .not('hora', 'is', null)
+        .not('campo_id', 'is', null)
+        .order('id')
+        .range(inicio, inicio + tamanoPagina - 1)
+      if (error) throw error
+      for (const partido of data || []) {
+        if (String(partido.estado || '').toLowerCase().startsWith('cancelad')) continue
+        if (!ocupacion.has(partido.fecha)) ocupacion.set(partido.fecha, [])
+        ocupacion.get(partido.fecha).push({
+          hora: String(partido.hora).slice(0, 5),
+          campo_id: Number(partido.campo_id),
+        })
+      }
+      if ((data || []).length < tamanoPagina) break
+    }
+  }
+  return ocupacion
+}
+
 function crearCruces(ids, formato) {
   const original = [...ids]
   if (original.length % 2) original.push(null) // Descanso para división impar
@@ -104,6 +136,8 @@ export default function ConfigurarTorneoPage() {
   const [horariosElegidos, setHorariosElegidos] = useState(['09:00', '11:00', '13:00', '15:00'])
   const [camposElegidos, setCamposElegidos] = useState(null)
   const [plan, setPlan] = useState(null)
+  // 'pendientes' permite crear hoy Primera y después Segunda, sin regenerar Primera.
+  const [divisionCalendarioId, setDivisionCalendarioId] = useState('')
 
   useEffect(() => {
     async function iniciar() {
@@ -168,6 +202,7 @@ export default function ConfigurarTorneoPage() {
   function elegirTorneo(id) {
     setTemporadaId(id)
     setDivisionId('')
+    setDivisionCalendarioId('')
     cancelarGestionEquipo()
     setPlan(null)
     setMensaje('')
@@ -522,31 +557,53 @@ async function guardarFechaDivision(idDivision) {
     setMensaje('')
     setTrabajando(true)
     try {
+      if (Number(temporada.id) === TEMPORADA_PROTEGIDA || temporada.activa) {
+        throw new Error('No se permite generar calendarios de la temporada oficial o de una temporada activa.')
+      }
       if (!temporada.fecha_inicio) throw new Error('El torneo necesita una fecha de inicio. Corrígela arriba.')
       if (fechaCorregida !== temporada.fecha_inicio) throw new Error('Primero guarda el cambio de fecha de inicio.')
-      for (const division of divisionesTorneo) {
-  const fechaEnPantalla = fechasDivisiones[division.id] ?? division.fecha_inicio ?? ''
-  const fechaGuardada = division.fecha_inicio ?? ''
-
-  if (fechaEnPantalla !== fechaGuardada) {
-    throw new Error(`Primero guarda la fecha de inicio de ${division.nombre}.`)
-  }
-}
       if (!divisionesTorneo.length) throw new Error('Agrega por lo menos una división.')
       if (!horariosElegidos.length || !(camposElegidos || []).length) throw new Error('Selecciona horarios y campos.')
 
+      if (!divisionCalendarioId) throw new Error('Selecciona la división que ya tiene sus equipos completos.')
+      const todasPendientes = divisionCalendarioId === 'pendientes'
+      const objetivo = todasPendientes
+        ? divisionesTorneo
+        : divisionesTorneo.filter((d) => String(d.id) === divisionCalendarioId)
+      if (!objetivo.length) throw new Error('Selecciona una división válida.')
+
       const definiciones = []
       const equipoEnDivision = new Set()
-      for (const division of divisionesTorneo) {
+      const omitidas = []
+      const incluidas = []
+
+      for (const division of objetivo) {
+        const fechaEnPantalla = fechasDivisiones[division.id] ?? division.fecha_inicio ?? ''
+        if (fechaEnPantalla !== (division.fecha_inicio ?? '')) {
+          throw new Error(`Primero guarda la fecha de inicio de ${division.nombre}.`)
+        }
+        const { data: yaExiste, error } = await supabase.from('jornadas')
+          .select('id').eq('division_id', division.id).limit(1)
+        if (error) throw error
+        if (yaExiste?.length) {
+          if (!todasPendientes) throw new Error(`${division.nombre} ya tiene jornadas. No se modificarán ni duplicarán.`)
+          omitidas.push(`${division.nombre} (ya tiene calendario)`)
+          continue
+        }
+
         const lista = equiposDivision(division.id)
-        if (lista.length < 2) throw new Error(`${division.nombre} necesita por lo menos 2 equipos.`)
+        if (lista.length < 2) {
+          if (!todasPendientes) throw new Error(`${division.nombre} necesita por lo menos 2 equipos.`)
+          omitidas.push(`${division.nombre} (faltan equipos)`)
+          continue
+        }
         for (const equipo of lista) {
-          if (equipoEnDivision.has(equipo.id)) throw new Error(`${equipo.nombre} aparece en dos divisiones de este torneo.`)
+          if (equipoEnDivision.has(equipo.id)) {
+            throw new Error(`${equipo.nombre} aparece en dos divisiones pendientes del mismo torneo.`)
+          }
           equipoEnDivision.add(equipo.id)
         }
-        const { data: yaExiste, error } = await supabase.from('jornadas').select('id').eq('division_id', division.id).limit(1)
-        if (error) throw error
-        if (yaExiste?.length) throw new Error(`${division.nombre} ya tiene jornadas. No generaremos un calendario duplicado.`)
+        incluidas.push(division.nombre)
         const cruces = crearCruces(lista.map((e) => e.id), temporada.formato)
         const fechaBaseDivision = siguienteDomingo(division.fecha_inicio || temporada.fecha_inicio)
         cruces.forEach((partidos, indice) => definiciones.push({
@@ -556,64 +613,77 @@ async function guardarFechaDivision(idDivision) {
         }))
       }
 
-      // Se respetan los espacios ya ocupados por cualquier torneo/división.
+      if (!definiciones.length) {
+        throw new Error('No hay divisiones pendientes con al menos 2 equipos. Los calendarios existentes se conservarán.')
+      }
+
       const fechas = [...new Set(definiciones.map((j) => j.fecha))]
-      const { data: ocupados, error: errorOcupados } = await supabase.from('partidos')
-        .select('fecha, hora, campo_id').in('fecha', fechas).not('hora', 'is', null).not('campo_id', 'is', null)
-        .limit(10000)
-      if (errorOcupados) throw errorOcupados
-      const espaciosOcupados = new Map()
-      for (const partido of ocupados || []) {
-  if (!espaciosOcupados.has(partido.fecha)) {
-    espaciosOcupados.set(partido.fecha, [])
-  }
+      const espaciosOcupados = await obtenerOcupacion(fechas)
+      const horariosOrdenados = HORARIOS.map(([hora]) => hora).filter((h) => horariosElegidos.includes(h))
+      const camposOrdenados = campos
+        .filter((c) => (camposElegidos || []).includes(Number(c.id)))
+        .sort((a, b) => Number(a.numero) - Number(b.numero))
+      const preferenciaDe = (equipoId) => preferencias.find((p) =>
+        Number(p.equipo_id) === Number(equipoId) &&
+        Number(p.temporada_id) === Number(temporada.id) && p.activo)
 
-  espaciosOcupados.get(partido.fecha).push({
-    hora: String(partido.hora).slice(0, 5),
-    campo_id: Number(partido.campo_id)
-  })
-}
-      const horariosOrdenados = [...horariosElegidos].sort()
-      const camposOrdenados = campos.filter((c) => (camposElegidos || []).includes(Number(c.id)))
-      const preferenciaDe = (equipoId) => preferencias.find((p) => Number(p.equipo_id) === Number(equipoId) && Number(p.temporada_id) === Number(temporada.id) && p.activo)
+      // La puntuación equilibra preferencias generales y horarios repetidos por equipo.
+      const vecesEquipoHora = new Map()
+      const ultimoHorarioEquipo = new Map()
+      const vecesDivisionDiaHora = new Map()
+      const contarEquipo = (id, hora) => vecesEquipoHora.get(`${id}-${hora}`) || 0
+      const contarDivisionDia = (j, hora) =>
+        vecesDivisionDiaHora.get(`${j.fecha}-${j.division_id}-${hora}`) || 0
 
-      // Agrupamos por fecha: evita que Primera y Segunda usen el mismo campo/hora.
+      // Orden cronológico: las divisiones nuevas aprovechan los espacios libres existentes.
       definiciones.sort((a, b) => a.fecha.localeCompare(b.fecha) || a.division_id - b.division_id || a.numero - b.numero)
       for (const jornada of definiciones) {
         if (!espaciosOcupados.has(jornada.fecha)) espaciosOcupados.set(jornada.fecha, [])
         const usados = espaciosOcupados.get(jornada.fecha)
         for (const partido of jornada.partidos) {
           const preferenciasPartido = [preferenciaDe(partido.local_id), preferenciaDe(partido.visitante_id)].filter(Boolean)
-          const obligatorias = preferenciasPartido.filter((p) => p.tipo === 'obligatoria').map((p) => String(p.hora).slice(0, 5))
-          if (new Set(obligatorias).size > 1) throw new Error(`Dos equipos tienen horarios obligatorios incompatibles el ${jornada.fecha}.`)
+          const obligatorias = preferenciasPartido.filter((p) => p.tipo === 'obligatoria')
+            .map((p) => String(p.hora).slice(0, 5))
+          if (new Set(obligatorias).size > 1) {
+            throw new Error(`Dos equipos tienen horarios obligatorios incompatibles el ${jornada.fecha}.`)
+          }
           const opciones = []
-          horariosOrdenados.forEach((hora, indiceHora) => {
+          horariosOrdenados.forEach((hora) => {
             if (obligatorias.length && hora !== obligatorias[0]) return
             camposOrdenados.forEach((campo, indiceCampo) => {
-              const clave = `${hora}-${campo.id}`
               if (usados.some((ocupado) =>
-  Number(ocupado.campo_id) === Number(campo.id) &&
-  seTraslapan(ocupado.hora, hora)
-)) return
-              const preferenciasSuaves = preferenciasPartido.filter((p) => p.tipo !== 'obligatoria' && String(p.hora).slice(0, 5) === hora).length
-              opciones.push({ hora, campo_id: campo.id, clave, puntuacion: indiceHora * 10 + indiceCampo - preferenciasSuaves * 2 })
+                Number(ocupado.campo_id) === Number(campo.id) && seTraslapan(ocupado.hora, hora))) return
+              const preferenciasSuaves = preferenciasPartido.filter((p) =>
+                p.tipo !== 'obligatoria' && String(p.hora).slice(0, 5) === hora).length
+              const repeticiones = contarEquipo(partido.local_id, hora) + contarEquipo(partido.visitante_id, hora)
+              const consecutivas = [partido.local_id, partido.visitante_id]
+                .filter((id) => ultimoHorarioEquipo.get(id) === hora).length
+              const puntuacion = (COSTO_HORARIO[hora] ?? 200) +
+                repeticiones * 14 + consecutivas * 8 +
+                contarDivisionDia(jornada, hora) * 5 - preferenciasSuaves * 22 + indiceCampo * 0.01
+              opciones.push({ hora, campo_id: campo.id, puntuacion })
             })
           })
           opciones.sort((a, b) => a.puntuacion - b.puntuacion)
-          if (!opciones.length) throw new Error(`No hay campo/hora disponible para ${jornada.division_nombre}, Jornada ${jornada.numero} (${jornada.fecha}). Revisa horarios, campos y preferencias obligatorias.`)
+          if (!opciones.length) {
+            throw new Error(`No hay campo/hora disponible para ${jornada.division_nombre}, Jornada ${jornada.numero} (${jornada.fecha}). Revisa horarios, campos y preferencias obligatorias.`)
+          }
           const elegido = opciones[0]
           partido.hora = elegido.hora
           partido.campo_id = elegido.campo_id
-          usados.push({
-  hora: elegido.hora,
-  campo_id: Number(elegido.campo_id)
-})
+          usados.push({ hora: elegido.hora, campo_id: Number(elegido.campo_id) })
+          for (const id of [partido.local_id, partido.visitante_id]) {
+            vecesEquipoHora.set(`${id}-${elegido.hora}`, contarEquipo(id, elegido.hora) + 1)
+            ultimoHorarioEquipo.set(id, elegido.hora)
+          }
+          const claveDivisionDia = `${jornada.fecha}-${jornada.division_id}-${elegido.hora}`
+          vecesDivisionDiaHora.set(claveDivisionDia, contarDivisionDia(jornada, elegido.hora) + 1)
         }
       }
 
       const totalPartidos = definiciones.reduce((n, j) => n + j.partidos.length, 0)
-      setPlan({ temporada_id: temporada.id, definiciones, totalPartidos })
-      setMensaje('Vista previa lista. Revisa las cantidades antes de confirmar.')
+      setPlan({ temporada_id: temporada.id, definiciones, totalPartidos, incluidas, omitidas })
+      setMensaje('Vista previa lista. No se ha guardado ni modificado ningún partido.')
     } catch (error) {
       setMensaje(`No se pudo preparar el calendario: ${error.message}`)
     } finally {
@@ -623,62 +693,37 @@ async function guardarFechaDivision(idDivision) {
 
   async function confirmarCalendario() {
     if (!plan || !temporada || trabajando || Number(plan.temporada_id) !== Number(temporada.id)) return
-    const ok = window.confirm(`Crear ${plan.definiciones.length} jornadas y ${plan.totalPartidos} partidos en ${temporada.nombre}? No se modificarán partidos existentes.`)
+    if (Number(temporada.id) === TEMPORADA_PROTEGIDA || temporada.activa) return
+    const ok = window.confirm(`Crear ${plan.definiciones.length} jornadas y ${plan.totalPartidos} partidos en ${temporada.nombre}? Los calendarios existentes no se modificarán.`)
     if (!ok) return
     setTrabajando(true)
     setMensaje('')
     try {
-      // Nueva verificación antes de escribir, por si otro administrador creó jornadas.
-      for (const division of divisionesTorneo) {
-        const { data, error } = await supabase.from('jornadas').select('id').eq('division_id', division.id).limit(1)
+      // Revisar SOLAMENTE las divisiones incluidas en esta vista previa.
+      const idsPlan = [...new Set(plan.definiciones.map((j) => j.division_id))]
+      for (const idDivision of idsPlan) {
+        const { data, error } = await supabase.from('jornadas')
+          .select('id').eq('division_id', idDivision).limit(1)
         if (error) throw error
-        if (data?.length) throw new Error(`${division.nombre} ya tiene jornadas. Vuelve a preparar la vista previa.`)
+        if (data?.length) throw new Error(`La división ${idDivision} ya tiene jornadas. Prepara una nueva vista previa.`)
       }
+      // Nueva lectura antes de guardar: detectar cambios de otros administradores.
       const fechas = [...new Set(plan.definiciones.map((j) => j.fecha))]
-      const { data: ocupados, error: errorOcupados } = await supabase.from('partidos')
-        .select('fecha, hora, campo_id').in('fecha', fechas).not('hora', 'is', null).not('campo_id', 'is', null)
-        .limit(10000)
-      if (errorOcupados) throw errorOcupados
-      const ocupacion = new Map()
+      const ocupacion = await obtenerOcupacion(fechas)
+      for (const jornada of plan.definiciones) {
+        if (!ocupacion.has(jornada.fecha)) ocupacion.set(jornada.fecha, [])
+        const usados = ocupacion.get(jornada.fecha)
+        for (const partido of jornada.partidos) {
+          const conflicto = usados.some((ocupado) =>
+            Number(ocupado.campo_id) === Number(partido.campo_id) &&
+            seTraslapan(ocupado.hora, partido.hora))
+          if (conflicto) {
+            throw new Error(`Conflicto: campo ${partido.campo_id}, ${jornada.fecha}, ${partido.hora}. Vuelve a preparar la vista previa.`)
+          }
+          usados.push({ hora: String(partido.hora).slice(0, 5), campo_id: Number(partido.campo_id) })
+        }
+      }
 
-for (const partido of ocupados || []) {
-  if (!ocupacion.has(partido.fecha)) {
-    ocupacion.set(partido.fecha, [])
-  }
-
-  ocupacion.get(partido.fecha).push({
-    hora: String(partido.hora).slice(0, 5),
-    campo_id: Number(partido.campo_id)
-  })
-}
-
-for (const jornada of plan.definiciones) {
-  if (!ocupacion.has(jornada.fecha)) {
-    ocupacion.set(jornada.fecha, [])
-  }
-
-  const usados = ocupacion.get(jornada.fecha)
-
-  for (const partido of jornada.partidos) {
-    const conflicto = usados.some((ocupado) =>
-      Number(ocupado.campo_id) === Number(partido.campo_id) &&
-      seTraslapan(ocupado.hora, partido.hora)
-    )
-
-    if (conflicto) {
-      throw new Error(
-        `Conflicto detectado: Campo ${partido.campo_id}, ` +
-        `${jornada.fecha}, ${partido.hora}. ` +
-        `Vuelve a generar la vista previa.`
-      )
-    }
-
-    usados.push({
-      hora: String(partido.hora).slice(0, 5),
-      campo_id: Number(partido.campo_id)
-    })
-  }
-}
       let creadas = 0
       for (const j of plan.definiciones) {
         const { data, error } = await supabase.from('jornadas').insert({
@@ -696,10 +741,11 @@ for (const jornada of plan.definiciones) {
         creadas++
       }
       setPlan(null)
-      setMensaje(`Calendario creado correctamente: ${creadas} jornadas y ${plan.totalPartidos} partidos, con campos y horarios.`)
+      setMensaje(`Calendario creado correctamente: ${creadas} jornadas y ${plan.totalPartidos} partidos. Los anteriores no se modificaron.`)
+      await cargarDatos()
     } catch (error) {
       setPlan(null)
-      setMensaje(`Se detuvo la generación: ${error.message}. IMPORTANTE: podrían haberse creado algunas jornadas. Revisa los datos antes de intentar otra vez; no borres nada automáticamente.`)
+      setMensaje(`Se detuvo la generación: ${error.message}. ATENCIÓN: podrían haberse creado algunas jornadas. Revisa los datos antes de volver a intentar; no borres nada automáticamente.`)
     } finally {
       setTrabajando(false)
     }
@@ -873,15 +919,25 @@ for (const jornada of plan.definiciones) {
         </section>
 
         <section style={caja}>
-          <h2>5. Generar calendario completo</h2>
-          <p>Se crearán todas las jornadas y partidos de las divisiones de este torneo, con horarios y campos asignados.</p>
+          <h2>5. Generar calendario por división</h2>
+          <p>Permite crear Primera hoy y Segunda después, sin modificar los calendarios anteriores. Se consultan los campos ocupados por todas las temporadas. Solo genera la fase regular; la liguilla se configurará por separado.</p>
+          <label>¿Qué división deseas programar?{' '}
+            <select value={divisionCalendarioId} onChange={(e) => { setDivisionCalendarioId(e.target.value); setPlan(null) }} style={control} disabled={trabajando}>
+              <option value="">Selecciona una división con sus equipos completos</option>
+              <option value="pendientes">Todas las pendientes (solo si ya completaste sus inscripciones)</option>
+              {divisionesTorneo.map((d) => <option key={d.id} value={String(d.id)}>{d.nombre} (solo esta división)</option>)}
+            </select>
+          </label>
+          <p>Prioridad general de horarios: <strong>11:00 AM → 1:00 PM → 9:00 AM → 3:00 PM</strong>. Se equilibran los turnos por equipo, respetando las preferencias obligatorias.</p>
           <button type="button" style={boton} onClick={prepararCalendario} disabled={trabajando}>
             {trabajando ? 'Procesando...' : 'Ver vista previa (sin guardar)'}
           </button>
           {plan && <div style={{ marginTop: 15, borderTop: '1px solid #ddd', paddingTop: 12 }}>
             <p><strong>Vista previa:</strong> {plan.definiciones.length} jornadas de división, {plan.totalPartidos} partidos.</p>
+            <p><strong>Se generarán:</strong> {plan.incluidas.join(', ')}.</p>
+            {!!plan.omitidas.length && <p><strong>Se omitirán:</strong> {plan.omitidas.join('; ')}.</p>}
             <p>Primer domingo: {plan.definiciones[0]?.fecha}. Último domingo: {plan.definiciones[plan.definiciones.length - 1]?.fecha}.</p>
-            <p>{divisionesTorneo.map((d) => `${d.nombre}: ${plan.definiciones.filter((j) => j.division_id === d.id).length} jornadas`).join(' | ')}</p>
+            <p>{plan.incluidas.map((nombre) => `${nombre}: ${plan.definiciones.filter((j) => j.division_nombre === nombre).length} jornadas`).join(' | ')}</p>
             <button type="button" style={{ ...boton, fontWeight: 'bold' }} onClick={confirmarCalendario} disabled={trabajando}>
               Confirmar y crear calendario
             </button>
