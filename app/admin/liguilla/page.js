@@ -168,7 +168,7 @@ export default function AdminLiguillaPage() {
           for (let desde = 0; ; desde += 500) {
             const res = await supabase.from('partidos')
               .select('id,jornada_id,local_id,visitante_id,goles_local,goles_visitante,estado')
-              .in('jornada_id', lote).order('id').range(desde, desde + 499)
+              .in('jornada_id', lote).eq('fase', 'regular').order('id').range(desde, desde + 499)
             if (res.error) throw res.error
             partidosData.push(...(res.data || []))
             if ((res.data || []).length < 500) break
