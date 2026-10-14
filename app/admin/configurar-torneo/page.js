@@ -943,6 +943,21 @@ async function guardarFechaDivision(idDivision) {
             </button>
           </div>}
         </section>
+                    
+        <section style={caja}>
+          <h2>6. Configurar y generar liguilla</h2>
+          <p>
+            Consulta los equipos clasificados y los enfrentamientos
+            de liguilla sin modificar el calendario regular.
+          </p>
+          <Link
+            href="/admin/liguilla"
+            style={{ ...boton, display: 'inline-block', textDecoration: 'none' }}
+          >
+            Ver vista previa de liguilla
+          </Link>
+        </section>
+
       </>}
     </main>
   )
