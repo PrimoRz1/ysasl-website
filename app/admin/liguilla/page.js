@@ -4,7 +4,7 @@ import { useEffect, useMemo, useState } from 'react'
 import { useRouter } from 'next/navigation'
 import { supabase } from '../../../lib/supabase'
 
-// Primera etapa: vista previa de la liguilla. NO crea ni modifica registros.
+// Segunda etapa: vista previa de liguilla y propuesta de fechas. NO escribe registros.
 // La temporada oficial (id 1) no se muestra ni se consulta para esta función.
 const TEMPORADA_PROTEGIDA = 1
 const caja = { border: '1px solid #d5dbe2', borderRadius: 10, padding: 18, marginTop: 18 }
@@ -15,6 +15,34 @@ function obtenerClasificados(total) {
   if (total >= 7) return 6
   if (total >= 4) return 4
   return 0
+}
+
+function domingoSiguiente(fechaISO, semanas = 1) {
+  const fecha = new Date(`${fechaISO}T12:00:00Z`)
+  if (Number.isNaN(fecha.getTime())) return ''
+  const diasHastaDomingo = (7 - fecha.getUTCDay()) || 7
+  fecha.setUTCDate(fecha.getUTCDate() + diasHastaDomingo + (semanas - 1) * 7)
+  return fecha.toISOString().slice(0, 10)
+}
+
+function crearPlanFechas(ultimaFecha, cantidad) {
+  if (!ultimaFecha || ![4, 6, 8].includes(cantidad)) return []
+  const preliminar = cantidad === 6 ? 'Repechaje' : 'Cuartos de final'
+  const etapas = cantidad === 4
+    ? [{ nombre: 'Semifinales', semana: 1, partidos: 2 }]
+    : [{ nombre: preliminar, semana: 1, partidos: cantidad === 6 ? 2 : 4 },
+       { nombre: 'Semifinales', semana: 2, partidos: 2 }]
+  const semanaFinal = cantidad === 4 ? 2 : 3
+  return [
+    ...etapas.map((etapa) => ({
+      ...etapa, fecha: domingoSiguiente(ultimaFecha, etapa.semana),
+      horario: 'Por asignar según disponibilidad de campos y horarios',
+    })),
+    { nombre: 'Tercer lugar', partidos: 1,
+      fecha: domingoSiguiente(ultimaFecha, semanaFinal), horario: '10:00 AM' },
+    { nombre: 'Final', partidos: 1,
+      fecha: domingoSiguiente(ultimaFecha, semanaFinal), horario: '12:00 PM' },
+  ]
 }
 
 function crearTabla(equipos, partidos) {
@@ -92,6 +120,8 @@ export default function AdminLiguillaPage() {
   const [divisionId, setDivisionId] = useState('')
   const [equipos, setEquipos] = useState([])
   const [partidos, setPartidos] = useState([])
+  const [jornadas, setJornadas] = useState([])
+  const [mostrarPlan, setMostrarPlan] = useState(false)
   const [configuracion, setConfiguracion] = useState(null)
   const [cargando, setCargando] = useState(false)
   const [error, setError] = useState('')
@@ -102,6 +132,10 @@ export default function AdminLiguillaPage() {
       const { data: { user }, error: errorUsuario } = await supabase.auth.getUser()
       if (!vigente) return
       if (errorUsuario || !user) { router.replace('/login'); return }
+      const { data: perfil, error: errorPerfil } = await supabase.from('perfiles')
+        .select('rol').eq('id', user.id).maybeSingle()
+      if (!vigente) return
+      if (errorPerfil || perfil?.rol !== 'admin') { router.replace('/admin'); return }
 
       const [resTemporadas, resDivisiones] = await Promise.all([
         supabase.from('temporadas').select('id,nombre,activa').neq('id', TEMPORADA_PROTEGIDA).order('id', { ascending: false }),
@@ -134,6 +168,8 @@ export default function AdminLiguillaPage() {
     async function cargarDivision() {
       setEquipos([])
       setPartidos([])
+      setJornadas([])
+      setMostrarPlan(false)
       setConfiguracion(null)
       setError('')
       if (!divisionId) return
@@ -167,7 +203,7 @@ export default function AdminLiguillaPage() {
           const lote = idsJornadas.slice(i, i + 40)
           for (let desde = 0; ; desde += 500) {
             const res = await supabase.from('partidos')
-              .select('id,jornada_id,local_id,visitante_id,goles_local,goles_visitante,estado')
+              .select('id,jornada_id,local_id,visitante_id,goles_local,goles_visitante,estado,fecha')
               .in('jornada_id', lote).eq('fase', 'regular').order('id').range(desde, desde + 499)
             if (res.error) throw res.error
             partidosData.push(...(res.data || []))
@@ -177,6 +213,7 @@ export default function AdminLiguillaPage() {
         if (!vigente) return
         setEquipos(equiposData)
         setPartidos(partidosData)
+        setJornadas(jornadasRes.data || [])
         setConfiguracion(configRes.data || null)
       } catch (err) {
         if (vigente) setError(`No se pudo cargar la vista previa: ${err.message}`)
@@ -194,6 +231,16 @@ export default function AdminLiguillaPage() {
   const pendientes = partidos.filter((p) => p.estado !== 'finalizado').length
   const rondas = crearRondas(tabla, cantidad)
   const completa = partidos.length > 0 && pendientes === 0
+  const fechaPorJornada = useMemo(() => new Map(
+    jornadas.map((j) => [Number(j.id), j.fecha])
+  ), [jornadas])
+  const ultimaFechaRegular = useMemo(() => {
+    const fechas = partidos.map((p) => p.fecha || fechaPorJornada.get(Number(p.jornada_id)))
+      .filter(Boolean).sort()
+    return fechas.length ? fechas[fechas.length - 1] : ''
+  }, [partidos, fechaPorJornada])
+  const planFechas = useMemo(() => crearPlanFechas(ultimaFechaRegular, cantidad),
+    [ultimaFechaRegular, cantidad])
 
   if (verificando) return <main style={{ padding: 30 }}>Verificando acceso...</main>
 
@@ -254,7 +301,33 @@ export default function AdminLiguillaPage() {
         </div>)}
 
         {cantidad === 0 && <p>Se necesitan al menos 4 equipos inscritos para preparar una liguilla.</p>}
-        <p style={{ marginTop: 25 }}><strong>Modo de prueba:</strong> todavía no se crean partidos, fechas, campos ni horarios.</p>
+        {planFechas.length > 0 && <div style={caja}>
+          <h2>Programación propuesta de liguilla</h2>
+          <p>Último partido regular programado: <strong>{ultimaFechaRegular}</strong>.</p>
+          <button type="button" onClick={() => setMostrarPlan((anterior) => !anterior)}>
+            {mostrarPlan ? 'Ocultar propuesta de fechas' : 'Ver propuesta de fechas y horarios'}
+          </button>
+          {mostrarPlan && <>
+            <p><strong>Vista previa únicamente.</strong> Estas fechas son tentativas y
+              todavía no se han comprobado campos disponibles ni otros partidos.</p>
+            {!completa && <p style={{ color: '#9a6700' }}>
+              La fase regular tiene {pendientes} partidos pendientes. No se puede confirmar la liguilla todavía.
+            </p>}
+            <div style={{ overflowX: 'auto' }}>
+              <table style={{ borderCollapse: 'collapse', width: '100%' }}>
+                <thead><tr>{['Etapa', 'Fecha propuesta', 'Partidos', 'Horario'].map((titulo) =>
+                  <th key={titulo} style={{ padding: 8, textAlign: 'left', borderBottom: '1px solid #aaa' }}>{titulo}</th>
+                )}</tr></thead>
+                <tbody>{planFechas.map((etapa) => <tr key={etapa.nombre}>
+                  {[etapa.nombre, etapa.fecha, etapa.partidos, etapa.horario].map((valor, indice) =>
+                    <td key={indice} style={{ padding: 8, borderBottom: '1px solid #eee' }}>{valor}</td>
+                  )}
+                </tr>)}</tbody>
+              </table>
+            </div>
+          </>}
+        </div>}
+        <p style={{ marginTop: 25 }}><strong>Modo de prueba:</strong> todavía no se crean partidos ni se reservan campos u horarios.</p>
       </>}
     </main>
   )
