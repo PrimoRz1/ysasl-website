@@ -12,6 +12,7 @@ export default async function Clasificacion() {
     .from('partidos')
     .select('*')
     .eq('estado', 'finalizado')
+  .eq('fase', 'regular')
 
   const { data: equipos, error: errorEquipos } = await supabase
   .from('equipos')
