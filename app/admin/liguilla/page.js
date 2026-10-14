@@ -138,8 +138,8 @@ export default function AdminLiguillaPage() {
       if (errorPerfil || perfil?.rol !== 'admin') { router.replace('/admin'); return }
 
       const [resTemporadas, resDivisiones] = await Promise.all([
-        supabase.from('temporadas').select('id,nombre,activa').neq('id', TEMPORADA_PROTEGIDA).order('id', { ascending: false }),
-        supabase.from('divisiones').select('id,nombre,temporada_id').neq('temporada_id', TEMPORADA_PROTEGIDA).order('id'),
+        supabase.from('temporadas').select('id,nombre,activa').order('id', { ascending: false }),
+        supabase.from('divisiones').select('id,nombre,temporada_id').order('id'),
       ])
       if (!vigente) return
       if (resTemporadas.error || resDivisiones.error) {
@@ -174,8 +174,7 @@ export default function AdminLiguillaPage() {
       setError('')
       if (!divisionId) return
       const division = divisiones.find((d) => Number(d.id) === Number(divisionId))
-      if (!division || Number(division.temporada_id) !== Number(temporadaId) ||
-          Number(division.temporada_id) === TEMPORADA_PROTEGIDA) {
+      if (!division || Number(division.temporada_id) !== Number(temporadaId)) {
         setError('La división seleccionada no pertenece a un torneo de prueba o futuro.')
         return
       }
@@ -249,7 +248,7 @@ export default function AdminLiguillaPage() {
       <button type="button" onClick={() => router.push('/admin/configurar-torneo')}>← Volver a configurar torneo</button>
       <h1>Vista previa de Liguilla</h1>
       <p>YSASL — esta pantalla solo consulta información. <strong>No genera partidos ni modifica resultados.</strong></p>
-      <p>El torneo oficial Verano / Invierno 2026 está excluido de esta función.</p>
+      <p>El torneo oficial Verano / Invierno 2026 se puede consultar en modo de vista previa. No se modifican partidos ni resultados.</p>
 
       <div style={caja}>
         <label htmlFor="temporada"><strong>Temporada</strong></label><br />
