@@ -1240,7 +1240,9 @@ await cargarPartidosJornada(jornadaId)
       onChange={(e) => {
         const cantidad = Number(e.target.value)
         setEquiposClasifican(cantidad)
-        setFormatoLiguilla(cantidad === 6 ? 'top6' : 'top8')
+        setFormatoLiguilla(
+  cantidad === 4 ? 'top4' : cantidad === 6 ? 'top6' : 'top8'
+)
       }}
       style={{
         width: '100%',
@@ -1249,15 +1251,20 @@ await cargarPartidosJornada(jornadaId)
         marginBottom: '12px'
       }}
     >
+      <option value={4}>4 equipos</option>
       <option value={6}>6 equipos</option>
       <option value={8}>8 equipos</option>
     </select>
 
     <div style={{ marginBottom: '12px' }}>
       <strong>Formato:</strong>{' '}
-      {equiposClasifican === 6
-        ? '1.º y 2.º pasan directo; 3.º vs 6.º y 4.º vs 5.º'
-        : '1.º vs 8.º, 2.º vs 7.º, 3.º vs 6.º y 4.º vs 5.º'}
+      
+{equiposClasifican === 4
+  ? 'Semifinales: 1.º vs 4.º y 2.º vs 3.º.'
+  : equiposClasifican === 6
+    ? '1.º y 2.º pasan directo; 3.º vs 6.º y 4.º vs 5.º.'
+    : '1.º vs 8.º, 2.º vs 7.º, 3.º vs 6.º y 4.º vs 5.º.'}
+
     </div>
 
     <button
