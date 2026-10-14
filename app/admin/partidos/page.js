@@ -151,13 +151,34 @@ if (
 
   setConfigLiguilla(data || null)
 
-  if (data) {
+  if (data && ![12, 13].includes(Number(idDivision))) {
     setEquiposClasifican(data.equipos_clasifican || 8)
     setFormatoLiguilla(data.formato || 'top8')
-  } else {
-    setEquiposClasifican(8)
-    setFormatoLiguilla('top8')
+  
+} else {
+  const { data: inscritos, error: errorInscritos } = await supabase
+    .from('inscripciones_equipo')
+    .select('equipo_id')
+    .eq('division_id', Number(idDivision))
+    .eq('activo', true)
+
+  if (errorInscritos) {
+    console.error('Error contando equipos:', errorInscritos)
+    return
   }
+
+  const totalEquipos = new Set(
+    (inscritos || []).map((item) => item.equipo_id)
+  ).size
+
+  const clasificados =
+    totalEquipos >= 10 ? 8 :
+    totalEquipos >= 7 ? 6 : 4
+
+  setEquiposClasifican(clasificados)
+  setFormatoLiguilla(`top${clasificados}`)
+}
+
 }
   async function guardarConfigLiguilla() {
   if (!divisionId) {
