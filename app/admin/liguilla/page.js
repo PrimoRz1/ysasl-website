@@ -644,7 +644,7 @@ cursor: listoParaGuardar ? 'pointer' : 'not-allowed'
     fontWeight: 'bold'
   }}>
     {listoParaGuardar
-      '✓ Partidos listos para guardar. Revisa fechas, horarios y campos antes de confirmar.'
+      ?'✓ Partidos listos para guardar. Revisa fechas, horarios y campos antes de confirmar.'
       : '⚠ Guardado bloqueado: faltan resultados, horarios, campos o verificaciones.'}
   </p>
 )}
