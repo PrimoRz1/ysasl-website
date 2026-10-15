@@ -415,6 +415,50 @@ export default function AdminLiguillaPage() {
   borrador.every((p) => p.fecha && p.hora && p.campoId) &&
   estadoDisponibilidad === 'verificado' &&
   conflictosBorrador.every((mensaje) => !mensaje)
+  async function guardarPartidosLiguilla() {
+  if (
+    !listaParaGuardar ||
+    Number(temporadaId) !== 9 ||
+    ![12, 13].includes(Number(divisionId))
+  ) {
+    setErrorBorrador('No se cumplen las condiciones para guardar.');
+    return;
+  }
+
+  const confirmado = window.confirm(
+    '¿Confirmas guardar las dos semifinales de PRUEBA YSASL 2027?'
+  );
+
+  if (!confirmado) return;
+
+  try {
+    const partidosParaGuardar = borrador.map((partido) => ({
+      localId: Number(partido.localId),
+      visitanteId: Number(partido.visitanteId),
+      fecha: partido.fecha,
+      hora: partido.hora,
+      campoId: Number(partido.campoId),
+    }));
+
+    const { data, error } = await supabase.rpc(
+      'guardar_liguilla_prueba',
+      {
+        p_division_id: Number(divisionId),
+        p_borrador: partidosParaGuardar,
+      }
+    );
+
+    if (error) throw error;
+
+    window.alert(
+      `Se guardaron ${data.partidos_creados} semifinales correctamente.`
+    );
+
+    window.location.reload();
+  } catch (error) {
+    setErrorBorrador(`No se pudieron guardar: ${error.message}`);
+  }
+}
   if (verificando) return <main style={{ padding: 30 }}>Verificando acceso...</main>
 
   return (
@@ -509,7 +553,8 @@ export default function AdminLiguillaPage() {
           </button>
 <button
   type="button"
-  disabled
+onClick={guardarPartidosLiguilla}
+  disabled={!listoParaGuardar}
   title="El guardado se habilitará cuando se completen las verificaciones de seguridad"
   style={{
     marginLeft: 10,
