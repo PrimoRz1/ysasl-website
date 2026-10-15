@@ -1,11 +1,12 @@
+
 'use client'
 
 import { useEffect, useMemo, useState } from 'react'
 import { useRouter } from 'next/navigation'
 import { supabase } from '../../../lib/supabase'
 
-// Segunda etapa: vista previa de liguilla y propuesta de fechas. NO escribe registros.
-// La temporada oficial (id 1) no se muestra ni se consulta para esta función.
+// Vista previa y borrador de programación de liguilla. NO escribe registros.
+// La temporada oficial (id 1) puede consultarse, pero nunca se prepara para guardar.
 const TEMPORADA_PROTEGIDA = 1
 const caja = { border: '1px solid #d5dbe2', borderRadius: 10, padding: 18, marginTop: 18 }
 const selector = { padding: 10, width: '100%', maxWidth: 580, marginTop: 6 }
@@ -111,6 +112,25 @@ function crearRondas(tabla, cantidad) {
   return []
 }
 
+// Solo se generan cruces de la primera ronda: las siguientes dependen de resultados.
+function crearBorradorPrimeraRonda(tabla, cantidad, fecha) {
+  const cruces = cantidad === 4 ? [[1, 4], [2, 3]]
+    : cantidad === 6 ? [[3, 6], [4, 5]]
+    : cantidad === 8 ? [[1, 8], [4, 5], [2, 7], [3, 6]] : []
+  const etapa = cantidad === 4 ? 'Semifinales' : cantidad === 6 ? 'Repechaje' : 'Cuartos de final'
+  return cruces.map(([posLocal, posVisitante], indice) => ({
+    numero: indice + 1,
+    etapa,
+    localId: tabla[posLocal - 1]?.id || null,
+    visitanteId: tabla[posVisitante - 1]?.id || null,
+    local: `${posLocal}. ${tabla[posLocal - 1]?.nombre || 'Por definir'}`,
+    visitante: `${posVisitante}. ${tabla[posVisitante - 1]?.nombre || 'Por definir'}`,
+    fecha: fecha || '',
+    hora: '',
+    campoId: '',
+  }))
+}
+
 export default function AdminLiguillaPage() {
   const router = useRouter()
   const [verificando, setVerificando] = useState(true)
@@ -125,6 +145,11 @@ export default function AdminLiguillaPage() {
   const [configuracion, setConfiguracion] = useState(null)
   const [cargando, setCargando] = useState(false)
   const [error, setError] = useState('')
+  const [borrador, setBorrador] = useState([])
+  const [mostrarBorrador, setMostrarBorrador] = useState(false)
+  const [camposDisponibles, setCamposDisponibles] = useState([])
+  const [cargandoCampos, setCargandoCampos] = useState(false)
+  const [errorBorrador, setErrorBorrador] = useState('')
 
   useEffect(() => {
     let vigente = true
@@ -171,6 +196,9 @@ export default function AdminLiguillaPage() {
       setJornadas([])
       setMostrarPlan(false)
       setConfiguracion(null)
+      setBorrador([])
+      setMostrarBorrador(false)
+      setErrorBorrador('')
       setError('')
       if (!divisionId) return
       const division = divisiones.find((d) => Number(d.id) === Number(divisionId))
@@ -229,7 +257,12 @@ export default function AdminLiguillaPage() {
   const finalizados = partidos.filter((p) => p.estado === 'finalizado').length
   const pendientes = partidos.filter((p) => p.estado !== 'finalizado').length
   const rondas = crearRondas(tabla, cantidad)
-  const completa = partidos.length > 0 && pendientes === 0
+  // No basta con marcar "finalizado": todos los marcadores deben estar completos.
+  const completa = partidos.length > 0 && pendientes === 0 && partidos.every((p) =>
+    p.goles_local != null && p.goles_visitante != null &&
+    Number.isInteger(Number(p.goles_local)) && Number.isInteger(Number(p.goles_visitante)) &&
+    Number(p.goles_local) >= 0 && Number(p.goles_visitante) >= 0
+  )
   const fechaPorJornada = useMemo(() => new Map(
     jornadas.map((j) => [Number(j.id), j.fecha])
   ), [jornadas])
@@ -240,6 +273,35 @@ export default function AdminLiguillaPage() {
   }, [partidos, fechaPorJornada])
   const planFechas = useMemo(() => crearPlanFechas(ultimaFechaRegular, cantidad),
     [ultimaFechaRegular, cantidad])
+
+  // En esta etapa solo se permite preparar borradores para PRUEBA YSASL 2027.
+  // La protección de escritura real deberá implementarse también en Supabase.
+  const esTemporadaPrueba = Number(temporadaId) === 9 &&
+    Number(temporadaId) !== TEMPORADA_PROTEGIDA
+
+  async function prepararBorrador() {
+    if (!esTemporadaPrueba || !divisionId || cargando || cantidad === 0) return
+    setErrorBorrador('')
+    setCargandoCampos(true)
+    try {
+      const { data, error: errorCampos } = await supabase.from('campos')
+        .select('*').order('id')
+      if (errorCampos) throw errorCampos
+      setCamposDisponibles(data || [])
+      setBorrador(crearBorradorPrimeraRonda(tabla, cantidad, planFechas[0]?.fecha))
+      setMostrarBorrador(true)
+    } catch (err) {
+      setErrorBorrador(`No se pudieron consultar los campos: ${err.message}`)
+    } finally {
+      setCargandoCampos(false)
+    }
+  }
+
+  function actualizarBorrador(indice, campo, valor) {
+    setBorrador((actual) => actual.map((partido, i) =>
+      i === indice ? { ...partido, [campo]: valor } : partido
+    ))
+  }
 
   if (verificando) return <main style={{ padding: 30 }}>Verificando acceso...</main>
 
@@ -324,6 +386,60 @@ export default function AdminLiguillaPage() {
                 </tr>)}</tbody>
               </table>
             </div>
+          </>}
+        </div>}
+        {esTemporadaPrueba && cantidad > 0 && <div style={caja}>
+          <h2>Preparar partidos de liguilla — simulación</h2>
+          <p>Este borrador reúne los cruces de la primera ronda y permite revisar fechas,
+            horarios y campos. <strong>No guarda nada en Supabase.</strong></p>
+          <button type="button" disabled={cargandoCampos || cargando} onClick={prepararBorrador}>
+            {cargandoCampos ? 'Consultando campos...' : 'Preparar borrador de partidos'}
+          </button>
+          {errorBorrador && <p style={{ color: '#b42318' }}>{errorBorrador}</p>}
+          {mostrarBorrador && <>
+            {!completa && <p style={{ color: '#9a6700' }}>
+              <strong>Simulación provisional:</strong> todavía hay partidos regulares
+              pendientes o marcadores incompletos. Los clasificados pueden cambiar.
+            </p>}
+            <p><strong>Etapa:</strong> {borrador[0]?.etapa || 'Por definir'}.
+              Solo se prepara la primera ronda; las siguientes dependen de sus resultados.</p>
+            <div style={{ overflowX: 'auto' }}>
+              <table style={{ borderCollapse: 'collapse', width: '100%' }}>
+                <thead><tr>{['Partido', 'Local', 'Visitante', 'Fecha', 'Hora', 'Campo'].map((titulo) =>
+                  <th key={titulo} style={{ padding: 8, textAlign: 'left', borderBottom: '1px solid #aaa' }}>{titulo}</th>
+                )}</tr></thead>
+                <tbody>{borrador.map((partido, indice) => <tr key={partido.numero}>
+                  <td style={{ padding: 8 }}>{partido.numero}</td>
+                  <td style={{ padding: 8 }}>{partido.local}</td>
+                  <td style={{ padding: 8 }}>{partido.visitante}</td>
+                  <td style={{ padding: 8 }}><input aria-label={`Fecha partido ${partido.numero}`}
+                    type="date" value={partido.fecha}
+                    onChange={(e) => actualizarBorrador(indice, 'fecha', e.target.value)} /></td>
+                  <td style={{ padding: 8 }}><select aria-label={`Hora partido ${partido.numero}`}
+                    value={partido.hora}
+                    onChange={(e) => actualizarBorrador(indice, 'hora', e.target.value)}>
+                    <option value="">Por asignar</option>
+                    {['09:00', '10:00', '11:00', '12:00', '13:00', '15:00'].map((hora) =>
+                      <option key={hora} value={hora}>{hora}</option>
+                    )}
+                  </select></td>
+                  <td style={{ padding: 8 }}><select aria-label={`Campo partido ${partido.numero}`}
+                    value={partido.campoId}
+                    onChange={(e) => actualizarBorrador(indice, 'campoId', e.target.value)}>
+                    <option value="">Por asignar</option>
+                    {camposDisponibles.map((campo) =>
+                      <option key={campo.id} value={String(campo.id)}>
+                        {campo.nombre || campo.nombre_campo ||
+                          (campo.numero ? `Campo ${campo.numero}` : `Campo ${campo.id}`)}
+                      </option>
+                    )}
+                  </select></td>
+                </tr>)}</tbody>
+              </table>
+            </div>
+            <p style={{ color: '#9a6700' }}><strong>Pendiente:</strong> verificar
+              conflictos con otros partidos, validar horarios y crear el guardado
+              seguro en Supabase. Esta pantalla todavía no reserva campos.</p>
           </>}
         </div>}
         <p style={{ marginTop: 25 }}><strong>Modo de prueba:</strong> todavía no se crean partidos ni se reservan campos u horarios.</p>
