@@ -499,6 +499,19 @@ export default function AdminLiguillaPage() {
           <button type="button" disabled={cargandoCampos || cargando} onClick={prepararBorrador}>
             {cargandoCampos ? 'Consultando campos...' : 'Preparar borrador de partidos'}
           </button>
+<button
+  type="button"
+  disabled
+  title="El guardado se habilitará cuando se completen las verificaciones de seguridad"
+  style={{
+    marginLeft: 10,
+    padding: '8px 12px',
+    opacity: 0.5,
+    cursor: 'not-allowed'
+  }}
+>
+  Guardar partidos de liguilla
+</button>
           {errorBorrador && <p style={{ color: '#b42318' }}>{errorBorrador}</p>}
           {mostrarBorrador && <>
             {!completa && <p style={{ color: '#9a6700' }}>
