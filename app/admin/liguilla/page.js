@@ -407,6 +407,14 @@ export default function AdminLiguillaPage() {
       return null
     })
   }, [borrador, partidosOcupados])
+  const listoParaGuardar =
+  esTemporadaPrueba &&
+  completa &&
+  mostrarBorrador &&
+  borrador.length > 0 &&
+  borrador.every((p) => p.fecha && p.hora && p.campoId) &&
+  estadoDisponibilidad === 'verificado' &&
+  conflictosBorrador.every((mensaje) => !mensaje)
   if (verificando) return <main style={{ padding: 30 }}>Verificando acceso...</main>
 
   return (
@@ -512,6 +520,16 @@ export default function AdminLiguillaPage() {
 >
   Guardar partidos de liguilla
 </button>
+{mostrarBorrador && (
+  <p style={{
+    color: listoParaGuardar ? '#166534' : '#b45309',
+    fontWeight: 'bold'
+  }}>
+    {listoParaGuardar
+      ? '✓ Requisitos preliminares completos. Falta habilitar el guardado seguro.'
+      : '⚠ Guardado bloqueado: faltan resultados, horarios, campos o verificaciones.'}
+  </p>
+)}
           {errorBorrador && <p style={{ color: '#b42318' }}>{errorBorrador}</p>}
           {mostrarBorrador && <>
             {!completa && <p style={{ color: '#9a6700' }}>
