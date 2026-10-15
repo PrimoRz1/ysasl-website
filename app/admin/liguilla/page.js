@@ -326,6 +326,71 @@ export default function AdminLiguillaPage() {
       i === indice ? { ...partido, [campo]: valor } : partido
     ))
   }
+  function asignarAutomaticamente() {
+  if (!esTemporadaPrueba || !mostrarBorrador || !borrador.length) return;
+
+  if (estadoDisponibilidad !== 'verificado') {
+    setErrorBorrador('Espera a que termine la verificación de campos.');
+    return;
+  }
+
+  const horas = ['09:00', '11:00', '13:00', '15:00'];
+  const campos = [...camposDisponibles]
+    .filter(c => c.id != null)
+    .sort((a, b) => Number(a.id) - Number(b.id));
+
+  const nuevos = [];
+
+  for (const partido of borrador) {
+    const fecha = partido.fecha;
+    let asignado = null;
+
+    if (!fecha) {
+      setErrorBorrador('Falta la fecha de un partido.');
+      return;
+    }
+
+    for (const hora of horas) {
+      for (const campo of campos) {
+        const campoId = Number(campo.id);
+
+        const ocupado = partidosOcupados.some(p =>
+          (p.fecha || p.jornadas?.fecha) === fecha &&
+          Number(p.campo_id) === campoId &&
+          p.hora &&
+          hayConflictoHorario(p.hora, hora)
+        );
+
+        const repetido = nuevos.some(p =>
+          p.fecha === fecha &&
+          Number(p.campoId) === campoId &&
+          hayConflictoHorario(p.hora, hora)
+        );
+
+        if (!ocupado && !repetido) {
+          asignado = {
+            ...partido,
+            hora,
+            campoId: String(campo.id)
+          };
+          break;
+        }
+      }
+
+      if (asignado) break;
+    }
+
+    if (!asignado) {
+      setErrorBorrador(`No hay horario y campo disponible para el partido ${partido.numero}.`);
+      return;
+    }
+
+    nuevos.push(asignado);
+  }
+
+  setErrorBorrador('');
+  setBorrador(nuevos);
+}
   const fechasBorrador = [...new Set(
     borrador.map((p) => p.fecha).filter(Boolean)
   )].sort().join(',')
@@ -547,10 +612,18 @@ export default function AdminLiguillaPage() {
         {esTemporadaPrueba && cantidad > 0 && <div style={caja}>
           <h2>Preparar partidos de liguilla — simulación</h2>
           <p>Este borrador reúne los cruces de la primera ronda y permite revisar fechas,
-            horarios y campos. <strong>No guarda nada en Supabase.</strong></p>
+            horarios y campos. <strong>Los partidos solo se guardan cuando presionas y confirmas el botón Guardar partidos de liguilla.</strong></p>
           <button type="button" disabled={cargandoCampos || cargando} onClick={prepararBorrador}>
             {cargandoCampos ? 'Consultando campos...' : 'Preparar borrador de partidos'}
           </button>
+            <button
+  type="button"
+  onClick={asignarAutomaticamente}
+  disabled={!mostrarBorrador || estadoDisponibilidad !== 'verificado'}
+  style={{ marginLeft: 10, padding: '8px 12px' }}
+>
+  Asignar automáticamente
+</button>
 <button
   type="button"
 onClick={guardarPartidosLiguilla}
@@ -559,8 +632,8 @@ onClick={guardarPartidosLiguilla}
   style={{
     marginLeft: 10,
     padding: '8px 12px',
-    opacity: 0.5,
-    cursor: 'not-allowed'
+    opacity: listoParaGuardar ? 1 : 0.5,
+cursor: listoParaGuardar ? 'pointer' : 'not-allowed'
   }}
 >
   Guardar partidos de liguilla
@@ -571,7 +644,7 @@ onClick={guardarPartidosLiguilla}
     fontWeight: 'bold'
   }}>
     {listoParaGuardar
-      ? '✓ Requisitos preliminares completos. Falta habilitar el guardado seguro.'
+      '✓ Partidos listos para guardar. Revisa fechas, horarios y campos antes de confirmar.'
       : '⚠ Guardado bloqueado: faltan resultados, horarios, campos o verificaciones.'}
   </p>
 )}
@@ -636,12 +709,10 @@ onClick={guardarPartidosLiguilla}
     </p>
   ) : null
 )}
-                    <p style={{ color: '#9a6700' }}><strong>Pendiente:</strong> verificar
-              conflictos con otros partidos, validar horarios y crear el guardado
-              seguro en Supabase. Esta pantalla todavía no reserva campos.</p>
+                    <p style={{ color: '#9a6700' }}><strong>Importante:</strong> La asignación automática solo prepara el borrador. Revisa fechas, horarios, campos y conflictos antes de confirmar el guardado.</p>
           </>}
         </div>}
-        <p style={{ marginTop: 25 }}><strong>Modo de prueba:</strong> todavía no se crean partidos ni se reservan campos u horarios.</p>
+        <p style={{ marginTop: 25 }}><strong>Modo de prueba:</strong> puedes asignar horarios y campos automáticamente o manualmente. Los partidos solo se crean cuando confirmas el guardado.</p>
       </>}
     </main>
   )
