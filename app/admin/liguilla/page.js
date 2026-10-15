@@ -160,6 +160,30 @@ function crearBorradorFinales(semifinales, tabla, fecha) {
   ]
 }
 
+// Determina puestos solo con resultados definitivos y sin empate.
+// Los penales requieren un ganador registrado; no se inventa a partir del marcador.
+function resolverResultadoEliminatoria(partido) {
+  if (!partido || partido.estado !== 'finalizado' ||
+    partido.goles_local == null || partido.goles_visitante == null) {
+    return { estado: 'pendiente', ganadorId: null, perdedorId: null }
+  }
+  const golesLocal = Number(partido.goles_local)
+  const golesVisitante = Number(partido.goles_visitante)
+  if (!Number.isInteger(golesLocal) || !Number.isInteger(golesVisitante) ||
+    golesLocal < 0 || golesVisitante < 0 ||
+    Number(partido.local_id) === Number(partido.visitante_id)) {
+    return { estado: 'pendiente', ganadorId: null, perdedorId: null }
+  }
+  if (golesLocal === golesVisitante) {
+    return { estado: 'penales_pendientes', ganadorId: null, perdedorId: null }
+  }
+  return {
+    estado: 'definido',
+    ganadorId: Number(golesLocal > golesVisitante ? partido.local_id : partido.visitante_id),
+    perdedorId: Number(golesLocal > golesVisitante ? partido.visitante_id : partido.local_id),
+  }
+}
+
 function convertirHoraAMinutos(hora) {
   if (!hora) return null
   const partes = String(hora).split(':')
@@ -514,6 +538,24 @@ export default function AdminLiguillaPage() {
   const rondasGuardadas = partidosLiguilla.filter((p) =>
     ['semifinal', 'final', 'tercer_lugar'].includes(p.fase)
   )
+  // Podio calculado automáticamente de la final y el partido por tercer lugar.
+  // Si hay duplicados o un empate sin ganador por penales, no se adjudica el puesto.
+  const finalesRegistradas = rondasGuardadas.filter((p) => p.fase === 'final')
+  const tercerosRegistrados = rondasGuardadas.filter((p) => p.fase === 'tercer_lugar')
+  const resultadoFinal = resolverResultadoEliminatoria(
+    finalesRegistradas.length === 1 ? finalesRegistradas[0] : null
+  )
+  const resultadoTercerLugar = resolverResultadoEliminatoria(
+    tercerosRegistrados.length === 1 ? tercerosRegistrados[0] : null
+  )
+  const podio = [
+    { puesto: 'Campeón', icono: '🥇', color: '#c99a24', fondo: '#fff9e8',
+      equipoId: resultadoFinal.ganadorId },
+    { puesto: 'Subcampeón', icono: '🥈', color: '#8b98a8', fondo: '#f6f8fb',
+      equipoId: resultadoFinal.perdedorId },
+    { puesto: 'Tercer lugar', icono: '🥉', color: '#b87949', fondo: '#fff7f0',
+      equipoId: resultadoTercerLugar.ganadorId },
+  ]
   const haySemisGuardadas = rondasGuardadas.some((p) => p.fase === 'semifinal')
   const hayFinalesGuardadas = rondasGuardadas.some((p) =>
     ['final', 'tercer_lugar'].includes(p.fase)
@@ -642,6 +684,37 @@ export default function AdminLiguillaPage() {
             {p.hora ? `, ${String(p.hora).slice(0, 5)}` : ''}
             {p.estado === 'finalizado' ? ` — ${p.goles_local} a ${p.goles_visitante}` : ' — Pendiente'}
           </p>)}
+        </div>}
+
+        {(finalesRegistradas.length > 0 || tercerosRegistrados.length > 0) && <div style={caja}>
+          <h2>🏆 Podio de la liguilla</h2>
+          <p><strong>{temporadaActual?.nombre || 'Temporada'} — {divisionActual?.nombre || 'División'}</strong></p>
+          <p>Los puestos se calculan automáticamente con los resultados guardados.</p>
+          <div style={{ display: 'grid', gridTemplateColumns: 'repeat(auto-fit, minmax(210px, 1fr))', gap: 12 }}>
+            {podio.map((posicion) => <div key={posicion.puesto} style={{
+              border: `2px solid ${posicion.color}`, background: posicion.fondo,
+              borderRadius: 12, padding: 18, textAlign: 'center', minHeight: 140,
+            }}>
+              <div style={{ fontSize: 34 }} aria-hidden="true">{posicion.icono}</div>
+              <h3 style={{ margin: '8px 0' }}>{posicion.puesto}</h3>
+              <p style={{ fontSize: 17, fontWeight: 'bold', margin: '10px 0' }}>
+                {posicion.equipoId ? nombreEquipo(posicion.equipoId) : 'Por definir'}
+              </p>
+            </div>)}
+          </div>
+          {(resultadoFinal.estado === 'penales_pendientes' ||
+            resultadoTercerLugar.estado === 'penales_pendientes') &&
+            <p style={{ color: '#9a6700', fontWeight: 'bold' }}>
+              ⚠ Hay un partido empatado. No se puede determinar el puesto hasta registrar
+              quién ganó por penales.
+            </p>}
+          {(finalesRegistradas.length > 1 || tercerosRegistrados.length > 1) &&
+            <p style={{ color: '#b42318', fontWeight: 'bold' }}>
+              ⚠ Hay partidos finales duplicados. Revisa los registros antes de asignar el podio.
+            </p>}
+          <button type="button" disabled={cargando} onClick={() => setRecarga((n) => n + 1)}>
+            Actualizar resultados
+          </button>
         </div>}
 
         {cantidad === 0 && <p>Se necesitan al menos 4 equipos inscritos para preparar una liguilla.</p>}
