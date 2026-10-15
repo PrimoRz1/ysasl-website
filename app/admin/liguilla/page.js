@@ -417,7 +417,7 @@ export default function AdminLiguillaPage() {
   conflictosBorrador.every((mensaje) => !mensaje)
   async function guardarPartidosLiguilla() {
   if (
-    !listaParaGuardar ||
+    !listoParaGuardar ||
     Number(temporadaId) !== 9 ||
     ![12, 13].includes(Number(divisionId))
   ) {
