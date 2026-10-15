@@ -130,7 +130,29 @@ function crearBorradorPrimeraRonda(tabla, cantidad, fecha) {
     campoId: '',
   }))
 }
+function convertirHoraAMinutos(hora) {
+  if (!hora) return null
 
+  const partes = String(hora).split(':')
+  if (partes.length < 2) return null
+
+  const horas = Number(partes[0])
+  const minutos = Number(partes[1])
+
+  if (!Number.isInteger(horas) || !Number.isInteger(minutos)) return null
+  if (horas < 0 || horas > 23 || minutos < 0 || minutos > 59) return null
+
+  return horas * 60 + minutos
+}
+
+function hayConflictoHorario(hora1, hora2) {
+  const inicio1 = convertirHoraAMinutos(hora1)
+  const inicio2 = convertirHoraAMinutos(hora2)
+
+  if (inicio1 === null || inicio2 === null) return false
+
+  return Math.abs(inicio1 - inicio2) < 120
+}
 export default function AdminLiguillaPage() {
   const router = useRouter()
   const [verificando, setVerificando] = useState(true)
@@ -150,6 +172,8 @@ export default function AdminLiguillaPage() {
   const [camposDisponibles, setCamposDisponibles] = useState([])
   const [cargandoCampos, setCargandoCampos] = useState(false)
   const [errorBorrador, setErrorBorrador] = useState('')
+  const [partidosOcupados, setPartidosOcupados] = useState([])
+  const [estadoDisponibilidad, setEstadoDisponibilidad] = useState('sin_consultar')
 
   useEffect(() => {
     let vigente = true
@@ -302,7 +326,87 @@ export default function AdminLiguillaPage() {
       i === indice ? { ...partido, [campo]: valor } : partido
     ))
   }
+  const fechasBorrador = [...new Set(
+    borrador.map((p) => p.fecha).filter(Boolean)
+  )].sort().join(',')
 
+  useEffect(() => {
+    let vigente = true
+
+    async function consultarOcupados() {
+      setPartidosOcupados([])
+      setEstadoDisponibilidad('sin_consultar')
+      if (!mostrarBorrador || !fechasBorrador) return
+      setEstadoDisponibilidad('consultando')
+
+      try {
+        const fechas = fechasBorrador.split(',')
+        const resultados = []
+
+        for (let desde = 0; ; desde += 500) {
+          const { data, error } = await supabase
+            .from('partidos')
+            .select('id,fecha,hora,campo_id,estado,jornadas(fecha)')
+            .neq('estado', 'cancelado')
+            .order('id')
+            .range(desde, desde + 499)
+
+          if (error) throw error
+
+          resultados.push(...(data || []))
+          if ((data || []).length < 500) break
+        }
+
+        if (vigente) {
+          setPartidosOcupados(resultados.filter((p) =>
+            fechas.includes(p.fecha || p.jornadas?.fecha)
+          ))
+          setEstadoDisponibilidad('verificado')
+        }
+      } catch (err) {
+        if (vigente) {
+          setEstadoDisponibilidad('error')
+          setErrorBorrador(
+            `No se pudo comprobar disponibilidad: ${err.message}`
+          )
+        }
+      }
+    }
+
+    consultarOcupados()
+    return () => { vigente = false }
+  }, [mostrarBorrador, fechasBorrador])
+    const conflictosBorrador = useMemo(() => {
+    return borrador.map((partido, indice) => {
+      if (!partido.fecha || !partido.hora || !partido.campoId) {
+        return null
+      }
+
+      const ocupado = partidosOcupados.find((p) =>
+        (p.fecha || p.jornadas?.fecha) === partido.fecha &&
+        Number(p.campo_id) === Number(partido.campoId) &&
+        hayConflictoHorario(p.hora, partido.hora)
+      )
+
+      if (ocupado) {
+        return `Conflicto con el partido existente #${ocupado.id}`
+      }
+
+      const repetido = borrador.find((otro, i) =>
+        i !== indice &&
+        otro.fecha === partido.fecha &&
+        otro.campoId &&
+        Number(otro.campoId) === Number(partido.campoId) &&
+        hayConflictoHorario(otro.hora, partido.hora)
+      )
+
+      if (repetido) {
+        return `Conflicto con el partido ${repetido.numero} del borrador`
+      }
+
+      return null
+    })
+  }, [borrador, partidosOcupados])
   if (verificando) return <main style={{ padding: 30 }}>Verificando acceso...</main>
 
   return (
@@ -437,7 +541,26 @@ export default function AdminLiguillaPage() {
                 </tr>)}</tbody>
               </table>
             </div>
-            <p style={{ color: '#9a6700' }}><strong>Pendiente:</strong> verificar
+<p style={{ fontWeight: 'bold' }}>
+  {estadoDisponibilidad === 'consultando'
+    ? '⏳ Revisando disponibilidad de campos y horarios...'
+    : estadoDisponibilidad === 'verificado'
+    ? '✓ Consulta terminada. Revisa los conflictos y los horarios asignados.'
+    : estadoDisponibilidad === 'error'
+    ? '⚠️ No se pudo verificar la disponibilidad.'
+    : 'Disponibilidad pendiente de verificar.'}
+</p>
+            {conflictosBorrador.map((mensaje, indice) =>
+  mensaje ? (
+    <p
+      key={indice}
+      style={{ color: '#b42318', fontWeight: 'bold' }}
+    >
+      ⚠️ Partido {indice + 1}: {mensaje}
+    </p>
+  ) : null
+)}
+                    <p style={{ color: '#9a6700' }}><strong>Pendiente:</strong> verificar
               conflictos con otros partidos, validar horarios y crear el guardado
               seguro en Supabase. Esta pantalla todavía no reserva campos.</p>
           </>}
