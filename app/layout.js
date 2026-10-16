@@ -56,6 +56,11 @@ export default function RootLayout({ children }) {
               <Link href="/clasificacion" style={linkStyle}>
                 CLASIFICACIÓN
               </Link>
+              
+<Link href="/campeones" style={linkStyle}>
+  🏆 CAMPEONES
+</Link>
+
 
               <Link href="/equipos" style={linkStyle}>
                 EQUIPOS
