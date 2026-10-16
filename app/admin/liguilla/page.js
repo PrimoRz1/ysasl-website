@@ -11,6 +11,43 @@ const DIVISIONES_PRUEBA = [12, 13]
 const caja = { border: '1px solid #d5dbe2', borderRadius: 10, padding: 18, marginTop: 18 }
 const selector = { padding: 10, width: '100%', maxWidth: 580, marginTop: 6 }
 
+
+// Relaciona fotografías registradas con el podio sin modificar resultados ni fotos anteriores.
+function normalizarEtiqueta(valor) {
+  return String(valor || '')
+    .normalize('NFD')
+    .replace(/[\u0300-\u036f]/g, '')
+    .toLowerCase()
+    .replace(/[^a-z0-9]+/g, ' ')
+    .trim()
+}
+
+function coincideTemporadaFoto(nombreFoto, nombreTorneo, esPrueba) {
+  const foto = normalizarEtiqueta(nombreFoto)
+  const torneo = normalizarEtiqueta(nombreTorneo)
+  if (!foto || !torneo) return false
+  // Las fotos de prueba se guardaron con un título manual distinto.
+  return foto === torneo || (esPrueba && foto === 'temporada de prueba')
+}
+
+function coincideEquipoFoto(nombreFoto, nombreTorneo, esPrueba) {
+  const foto = normalizarEtiqueta(nombreFoto)
+  const torneo = normalizarEtiqueta(nombreTorneo)
+  if (!foto || !torneo) return false
+  if (foto === torneo) return true
+  if (!esPrueba) return false
+  // Alias EXCLUSIVO de la prueba: "Prueba 6" = "PRUEBA WEB PRIMERA 6".
+  const abreviado = foto.match(/^prueba ([0-9]+)$/)
+  const completo = torneo.match(/^prueba web (?:primera|segunda) ([0-9]+)$/)
+  return Boolean(abreviado && completo && abreviado[1] === completo[1])
+}
+
+function coincidePosicionFoto(posicionFoto, codigoPodio) {
+  const valor = String(posicionFoto || 'campeon').toLowerCase()
+  return valor === codigoPodio ||
+    (codigoPodio === 'tercer_lugar' && valor === 'tercero')
+}
+
 function obtenerClasificados(total) {
   if (total >= 10) return 8
   if (total >= 7) return 6
@@ -229,6 +266,8 @@ export default function AdminLiguillaPage() {
   const [guardando, setGuardando] = useState(false)
   const [mensajeGuardado, setMensajeGuardado] = useState('')
   const [recarga, setRecarga] = useState(0)
+  const [fotosFinalistas, setFotosFinalistas] = useState([])
+  const [errorFotos, setErrorFotos] = useState('')
 
   useEffect(() => {
     let vigente = true
@@ -274,6 +313,36 @@ export default function AdminLiguillaPage() {
     temporadaActual?.activa === false
 
   useEffect(() => { setDivisionId('') }, [temporadaId])
+
+
+  // Lectura solamente: nunca escribe en campeones, temporadas o partidos.
+  useEffect(() => {
+    let vigente = true
+    async function cargarFotos() {
+      setFotosFinalistas([])
+      setErrorFotos('')
+      if (!divisionId || !temporadaId) return
+      try {
+        const registros = []
+        // Paginación para que las fotografías históricas sigan siendo accesibles.
+        for (let desde = 0; ; desde += 500) {
+          const { data, error: errorConsulta } = await supabase
+            .from('campeones')
+            .select('id,temporada,division,equipo,posicion,foto_path,created_at')
+            .order('created_at', { ascending: false })
+            .range(desde, desde + 499)
+          if (errorConsulta) throw errorConsulta
+          registros.push(...(data || []))
+          if ((data || []).length < 500) break
+        }
+        if (vigente) setFotosFinalistas(registros)
+      } catch (err) {
+        if (vigente) setErrorFotos('No se pudieron cargar las fotos: ' + (err.message || 'Error desconocido'))
+      }
+    }
+    cargarFotos()
+    return () => { vigente = false }
+  }, [temporadaId, divisionId])
 
   useEffect(() => {
     let vigente = true
@@ -549,13 +618,29 @@ export default function AdminLiguillaPage() {
     tercerosRegistrados.length === 1 ? tercerosRegistrados[0] : null
   )
   const podio = [
-    { puesto: 'Campeón', icono: '🥇', color: '#c99a24', fondo: '#fff9e8',
+    { puesto: 'Campeón', codigo: 'campeon', icono: '🥇', color: '#c99a24', fondo: '#fff9e8',
       equipoId: resultadoFinal.ganadorId },
-    { puesto: 'Subcampeón', icono: '🥈', color: '#8b98a8', fondo: '#f6f8fb',
+    { puesto: 'Subcampeón', codigo: 'subcampeon', icono: '🥈', color: '#8b98a8', fondo: '#f6f8fb',
       equipoId: resultadoFinal.perdedorId },
-    { puesto: 'Tercer lugar', icono: '🥉', color: '#b87949', fondo: '#fff7f0',
+    { puesto: 'Tercer lugar', codigo: 'tercer_lugar', icono: '🥉', color: '#b87949', fondo: '#fff7f0',
       equipoId: resultadoTercerLugar.ganadorId },
   ]
+  const podioConFotos = podio.map((puesto) => {
+    if (!puesto.equipoId || !temporadaActual || !divisionActual) return { ...puesto, fotoUrl: null }
+    const equipoPodio = nombreEquipo(puesto.equipoId)
+    const foto = fotosFinalistas.find((registro) =>
+      Boolean(registro.foto_path) &&
+      coincidePosicionFoto(registro.posicion, puesto.codigo) &&
+      coincideTemporadaFoto(registro.temporada, temporadaActual.nombre, esTemporadaPrueba) &&
+      normalizarEtiqueta(registro.division) === normalizarEtiqueta(divisionActual.nombre) &&
+      coincideEquipoFoto(registro.equipo, equipoPodio, esTemporadaPrueba)
+    )
+    const fotoUrl = foto
+      ? supabase.storage.from('fotos-finalistas').getPublicUrl(foto.foto_path).data.publicUrl
+      : null
+    return { ...puesto, fotoUrl }
+  })
+
   const haySemisGuardadas = rondasGuardadas.some((p) => p.fase === 'semifinal')
   const hayFinalesGuardadas = rondasGuardadas.some((p) =>
     ['final', 'tercer_lugar'].includes(p.fase)
@@ -690,11 +775,19 @@ export default function AdminLiguillaPage() {
           <h2>🏆 Podio de la liguilla</h2>
           <p><strong>{temporadaActual?.nombre || 'Temporada'} — {divisionActual?.nombre || 'División'}</strong></p>
           <p>Los puestos se calculan automáticamente con los resultados guardados.</p>
+          {errorFotos && <p style={{ color: '#b42318' }}>{errorFotos}</p>}
           <div style={{ display: 'grid', gridTemplateColumns: 'repeat(auto-fit, minmax(210px, 1fr))', gap: 12 }}>
-            {podio.map((posicion) => <div key={posicion.puesto} style={{
+            {podioConFotos.map((posicion) => <div key={posicion.puesto} style={{
               border: `2px solid ${posicion.color}`, background: posicion.fondo,
               borderRadius: 12, padding: 18, textAlign: 'center', minHeight: 140,
             }}>
+              {posicion.fotoUrl && <img
+                src={posicion.fotoUrl}
+                alt={`Fotografía de ${nombreEquipo(posicion.equipoId)}`}
+                loading="lazy"
+                style={{ width: '100%', height: 160, objectFit: 'cover',
+                  borderRadius: 8, marginBottom: 12 }}
+              />}
               <div style={{ fontSize: 34 }} aria-hidden="true">{posicion.icono}</div>
               <h3 style={{ margin: '8px 0' }}>{posicion.puesto}</h3>
               <p style={{ fontSize: 17, fontWeight: 'bold', margin: '10px 0' }}>
