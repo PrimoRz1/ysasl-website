@@ -170,6 +170,35 @@ function crearBorradorPrimeraRonda(tabla, cantidad, fecha) {
   }))
 }
 
+// Prepara semifinales a partir de la ronda previa ya finalizada.
+// Se usa el orden de guardado para mantener el cuadro de eliminación.
+function crearBorradorSemifinales(preliminares, tabla, cantidad, fecha) {
+  const esperados = cantidad === 8 ? 4 : cantidad === 6 ? 2 : 0
+  if (!esperados || preliminares.length !== esperados) return []
+  const ganadores = preliminares.map((p) => {
+    if (p.estado !== 'finalizado' || p.goles_local == null || p.goles_visitante == null) return null
+    const gl = Number(p.goles_local)
+    const gv = Number(p.goles_visitante)
+    // El ganador por penales o por mejor posición requiere un registro verificable.
+    // Mientras no esté implementado, no se inventa un ganador de un empate.
+    if (!Number.isInteger(gl) || !Number.isInteger(gv) || gl < 0 || gv < 0 || gl === gv) return null
+    return Number(gl > gv ? p.local_id : p.visitante_id)
+  })
+  if (ganadores.some((id) => !id)) return []
+  const cruces = cantidad === 8
+    ? [[ganadores[0], ganadores[1]], [ganadores[2], ganadores[3]]]
+    : [[tabla[0]?.id, ganadores[1]], [tabla[1]?.id, ganadores[0]]]
+  const usados = cruces.flat().map(Number)
+  if (usados.some((id) => !Number.isInteger(id) || id <= 0) ||
+      new Set(usados).size !== 4) return []
+  const nombre = (id) => tabla.find((e) => Number(e.id) === Number(id))?.nombre || `Equipo ${id}`
+  return cruces.map(([localId, visitanteId], indice) => ({
+    numero: indice + 1, etapa: 'Semifinales',
+    localId, visitanteId, local: nombre(localId), visitante: nombre(visitanteId),
+    fecha, hora: '', campoId: '',
+  }))
+}
+
 // El resultado de penales no se puede deducir de un empate: se bloquea hasta registrarlo.
 function crearBorradorFinales(semifinales, tabla, fecha) {
   if (semifinales.length !== 2) return []
@@ -281,7 +310,7 @@ export default function AdminLiguillaPage() {
         if (!vigente) return
         if (errorPerfil || perfil?.rol !== 'admin') { router.replace('/admin'); return }
         const [resTemporadas, resDivisiones] = await Promise.all([
-          supabase.from('temporadas').select('id,nombre,activa').order('id', { ascending: false }),
+          supabase.from('temporadas').select('id,nombre,activa,formato').order('id', { ascending: false }),
           supabase.from('divisiones').select('id,nombre,temporada_id').order('id'),
         ])
         if (!vigente) return
@@ -456,11 +485,13 @@ export default function AdminLiguillaPage() {
         .from('partidos')
         .select('id,local_id,visitante_id,goles_local,goles_visitante,estado,fecha,fase,jornadas!inner(division_id,fecha)')
         .eq('jornadas.division_id', Number(divisionId))
-        .in('fase', ['semifinal', 'final', 'tercer_lugar'])
+        .in('fase', ['cuartos', 'repechaje', 'semifinal', 'final', 'tercer_lugar'])
         .order('id')
       if (errorEliminatorias) throw errorEliminatorias
-      const semis = (eliminatorias || []).filter((p) => p.fase === 'semifinal')
-      const finales = (eliminatorias || []).filter((p) => ['final', 'tercer_lugar'].includes(p.fase))
+      const partidosGuardados = eliminatorias || []
+      const semis = partidosGuardados.filter((p) => p.fase === 'semifinal')
+      const preliminares = partidosGuardados.filter((p) => ['cuartos', 'repechaje'].includes(p.fase))
+      const finales = partidosGuardados.filter((p) => ['final', 'tercer_lugar'].includes(p.fase))
       if (finales.length) {
         throw new Error('La final o el tercer lugar ya existen. No se crearán partidos duplicados.')
       }
@@ -476,12 +507,36 @@ export default function AdminLiguillaPage() {
         }
         const fechasSemis = semis.map((p) => p.fecha || p.jornadas?.fecha).filter(Boolean).sort()
         if (fechasSemis.length !== 2) throw new Error('Falta la fecha de una semifinal.')
-        const fechaFinal = domingoSiguiente(fechasSemis[1])
-        nuevoBorrador = crearBorradorFinales(semis, tabla, fechaFinal)
+        nuevoBorrador = crearBorradorFinales(semis, tabla, domingoSiguiente(fechasSemis[1]))
         nuevoTipo = 'finales'
       } else if (semis.length === 0) {
-        nuevoBorrador = crearBorradorPrimeraRonda(tabla, cantidad, planFechas[0]?.fecha)
-        nuevoTipo = cantidad === 4 ? 'semifinales' : 'preliminar'
+        if (cantidad === 4) {
+          if (preliminares.length) throw new Error('Se encontraron rondas previas inesperadas.')
+          nuevoBorrador = crearBorradorPrimeraRonda(tabla, cantidad, planFechas[0]?.fecha)
+          nuevoTipo = 'semifinales'
+        } else if (preliminares.length === 0) {
+          nuevoBorrador = crearBorradorPrimeraRonda(tabla, cantidad, planFechas[0]?.fecha)
+          nuevoTipo = 'preliminar'
+        } else {
+          const etapaEsperada = cantidad === 8 ? 'cuartos' : 'repechaje'
+          const cantidadEsperada = cantidad === 8 ? 4 : 2
+          if (preliminares.length !== cantidadEsperada ||
+              preliminares.some((p) => p.fase !== etapaEsperada)) {
+            throw new Error('Los partidos de la ronda previa están incompletos o duplicados.')
+          }
+          if (preliminares.some((p) => p.estado !== 'finalizado' ||
+            p.goles_local == null || p.goles_visitante == null)) {
+            throw new Error('Primero termina todos los partidos de cuartos o repechaje.')
+          }
+          if (preliminares.some((p) => Number(p.goles_local) === Number(p.goles_visitante))) {
+            throw new Error('Hay un empate en la ronda previa. Falta implementar y registrar el criterio de desempate antes de avanzar.')
+          }
+          const fechas = preliminares.map((p) => p.fecha || p.jornadas?.fecha).filter(Boolean).sort()
+          if (fechas.length !== cantidadEsperada) throw new Error('Falta la fecha de un partido de la ronda previa.')
+          nuevoBorrador = crearBorradorSemifinales(preliminares, tabla, cantidad,
+            domingoSiguiente(fechas[fechas.length - 1]))
+          nuevoTipo = 'semifinales'
+        }
       } else {
         throw new Error('Se encontraron semifinales incompletas o duplicadas. Revisa los partidos existentes.')
       }
@@ -605,7 +660,7 @@ export default function AdminLiguillaPage() {
   }
 
   const rondasGuardadas = partidosLiguilla.filter((p) =>
-    ['semifinal', 'final', 'tercer_lugar'].includes(p.fase)
+    ['cuartos', 'repechaje', 'semifinal', 'final', 'tercer_lugar'].includes(p.fase)
   )
   // Podio calculado automáticamente de la final y el partido por tercer lugar.
   // Si hay duplicados o un empate sin ganador por penales, no se adjudica el puesto.
@@ -641,22 +696,37 @@ export default function AdminLiguillaPage() {
     return { ...puesto, fotoUrl }
   })
 
+  const hayPreviasGuardadas = rondasGuardadas.some((p) =>
+    ['cuartos', 'repechaje'].includes(p.fase)
+  )
   const haySemisGuardadas = rondasGuardadas.some((p) => p.fase === 'semifinal')
   const hayFinalesGuardadas = rondasGuardadas.some((p) =>
     ['final', 'tercer_lugar'].includes(p.fase)
   )
-  const tipoGuardable = (tipoBorrador === 'semifinales' && !haySemisGuardadas) ||
+  const tipoGuardable =
+    (tipoBorrador === 'preliminar' && !hayPreviasGuardadas &&
+      !haySemisGuardadas && !hayFinalesGuardadas && [6, 8].includes(cantidad)) ||
+    (tipoBorrador === 'semifinales' && !haySemisGuardadas && !hayFinalesGuardadas &&
+      (cantidad === 4 ? !hayPreviasGuardadas : hayPreviasGuardadas)) ||
     (tipoBorrador === 'finales' && haySemisGuardadas && !hayFinalesGuardadas)
-  const borradorValido = borrador.length === 2 &&
-    (tipoBorrador !== 'finales' || borrador.every((p) => p.fecha === borrador[0]?.fecha)) &&
+  const cantidadBorradorEsperada = tipoBorrador === 'preliminar' && cantidad === 8 ? 4 : 2
+  const idsBorrador = borrador.flatMap((p) => [Number(p.localId), Number(p.visitanteId)])
+  const borradorValido = borrador.length === cantidadBorradorEsperada &&
+    new Set(idsBorrador).size === idsBorrador.length &&
+    borrador.every((p) => p.fecha === borrador[0]?.fecha) &&
     borrador.every((p) =>
-    Number.isInteger(Number(p.localId)) && Number(p.localId) > 0 &&
-    Number.isInteger(Number(p.visitanteId)) && Number(p.visitanteId) > 0 &&
-    Number(p.localId) !== Number(p.visitanteId) &&
-    esDomingo(p.fecha) && convertirHoraAMinutos(p.hora) !== null &&
-    camposDisponibles.some((c) => Number(c.id) === Number(p.campoId))
-  )
-  const listoParaGuardar = esTemporadaPrueba && completa && partidos.length === 30 &&
+      Number.isInteger(Number(p.localId)) && Number(p.localId) > 0 &&
+      Number.isInteger(Number(p.visitanteId)) && Number(p.visitanteId) > 0 &&
+      Number(p.localId) !== Number(p.visitanteId) &&
+      tabla.some((e) => Number(e.id) === Number(p.localId)) &&
+      tabla.some((e) => Number(e.id) === Number(p.visitanteId)) &&
+      esDomingo(p.fecha) && convertirHoraAMinutos(p.hora) !== null &&
+      camposDisponibles.some((c) => Number(c.id) === Number(p.campoId))
+    )
+  // El RPC de Supabase valida un torneo ida-vuelta completo (N*(N-1) partidos).
+  const faseRegularValidada = temporadaActual?.formato === 'ida_vuelta' &&
+    tabla.length >= 4 && partidos.length === tabla.length * (tabla.length - 1) && completa
+  const listoParaGuardar = esTemporadaPrueba && faseRegularValidada &&
     !cargando && !cargandoCampos && !guardando && mostrarBorrador && tipoGuardable &&
     borradorValido && disponibilidadLista && conflictosBorrador.every((m) => !m)
 
@@ -667,14 +737,19 @@ export default function AdminLiguillaPage() {
       return
     }
     const esFinales = tipoBorrador === 'finales'
-    const descripcion = esFinales ? 'la final y el tercer lugar' : 'las dos semifinales'
+    const descripcion = esFinales ? 'la final y el tercer lugar' :
+      tipoBorrador === 'preliminar' ?
+        (cantidad === 8 ? 'los cuatro cuartos de final' : 'los dos partidos de repechaje') :
+        'las dos semifinales'
     if (!window.confirm(`¿Confirmas guardar ${descripcion} de PRUEBA YSASL 2027?\n\nRevisa que fechas, horarios y campos sean correctos.`)) return
     setGuardando(true)
     setErrorBorrador('')
     try {
       const partidosParaGuardar = borrador.map((p) => ({
         etapa: p.etapa === 'Final' ? 'final' :
-          p.etapa === 'Tercer lugar' ? 'tercer_lugar' : 'semifinal',
+          p.etapa === 'Tercer lugar' ? 'tercer_lugar' :
+            p.etapa === 'Cuartos de final' ? 'cuartos' :
+              p.etapa === 'Repechaje' ? 'repechaje' : 'semifinal',
         localId: Number(p.localId),
         visitanteId: Number(p.visitanteId),
         fecha: p.fecha,
@@ -687,7 +762,7 @@ export default function AdminLiguillaPage() {
         p_borrador: partidosParaGuardar,
       })
       if (errorGuardar) throw errorGuardar
-      setMensajeGuardado(`Se guardaron ${data?.partidos_creados ?? 2} partidos: ${descripcion}.`)
+      setMensajeGuardado(`Se guardaron ${data?.partidos_creados ?? borrador.length} partidos: ${descripcion}.`)
       setBorrador([])
       setMostrarBorrador(false)
       setTipoBorrador('')
@@ -835,7 +910,7 @@ export default function AdminLiguillaPage() {
 
         {esTemporadaPrueba && cantidad > 0 && <div style={caja}>
           <h2>Preparar partidos — PRUEBA YSASL 2027</h2>
-          <p>Se preparan semifinales o, cuando ambas hayan terminado, la final y el tercer lugar. <strong>Nada se guarda hasta confirmar.</strong></p>
+          <p>Se preparan cuartos o repechaje, después semifinales y por último final y tercer lugar. <strong>Nada se guarda hasta confirmar.</strong></p>
           <button type="button" disabled={cargandoCampos || cargando || guardando} onClick={prepararBorrador}>
             {cargandoCampos ? 'Consultando partidos...' : 'Preparar borrador de partidos'}
           </button>
@@ -855,9 +930,7 @@ export default function AdminLiguillaPage() {
           {mostrarBorrador && <p style={{ color: listoParaGuardar ? '#166534' : '#b45309', fontWeight: 'bold' }}>
             {listoParaGuardar
               ? '✓ Partidos listos para revisar y confirmar.'
-              : tipoBorrador === 'preliminar'
-                ? '⚠ Repechaje y cuartos de final: borrador de vista previa. El guardado de esas etapas aún no está habilitado.'
-                : '⚠ Guardado bloqueado: faltan resultados, horarios, campos o verificaciones.'}
+              : '⚠ Guardado bloqueado: faltan resultados completos, horarios, campos o verificaciones.'}
           </p>}
           {errorBorrador && <p style={{ color: '#b42318' }}>{errorBorrador}</p>}
           {mostrarBorrador && <>
