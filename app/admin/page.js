@@ -69,7 +69,7 @@ export default function AdminPage() {
         <AdminCard titulo="Jornadas" descripcion="Crear jornadas manualmente y reprogramar calendarios" href="/admin/jornadas" />
         <AdminCard titulo="Resultados" descripcion="Registrar resultados" href="/admin/resultados" />
         <AdminCard titulo="Liguilla" descripcion="Ver clasificaciones y programación de liguilla" href="/admin/liguilla" />
-        <AdminCard title="📸 Fotografías de Finalistas" descripcion="Subir fotos del campeón, subcampeón y tercer lugar" href="/admin/campeones" />
+        <AdminCard titulo="📸 Fotografías de Finalistas" descripcion="Subir fotos del campeón, subcampeón y tercer lugar" href="/admin/campeones" />
         <AdminCard titulo="Disciplina" descripcion="Tarjetas y suspensiones" href="/admin/disciplina" />
         <AdminCard titulo="Patrocinadores" descripcion="Administrar patrocinadores" href="/admin/patrocinadores" />
       <AdminCard titulo="Torneos" descripcion="Crear y administrar torneos y divisiones" href="/admin/temporadas" />
