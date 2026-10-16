@@ -147,6 +147,11 @@ export default function AdminCampeones() {
 
   return (
     <main style={{ maxWidth: 900, margin: 'auto', padding: 24 }}>
+    
+<a href="/admin" style={{ display: 'inline-block', marginBottom: 20, color: '#166534', fontWeight: 'bold', textDecoration: 'none' }}>
+  ← Volver a Administración
+</a>
+
       <h1>🏆 Administración de Finalistas</h1>
       <p>
         Agrega fotografías del campeón, subcampeón y tercer lugar de YSASL.
