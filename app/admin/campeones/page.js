@@ -13,11 +13,18 @@ const campo = {
   boxSizing: 'border-box',
 }
 
+const nombresPosicion = {
+  campeon: '🥇 Campeón',
+  subcampeon: '🥈 Subcampeón',
+  tercer_lugar: '🥉 Tercer lugar',
+}
+
 export default function AdminCampeones() {
   const [autorizado, setAutorizado] = useState(null)
   const [temporada, setTemporada] = useState('')
   const [division, setDivision] = useState('')
   const [equipo, setEquipo] = useState('')
+  const [posicion, setPosicion] = useState('campeon')
   const [foto, setFoto] = useState(null)
   const [campeones, setCampeones] = useState([])
   const [guardando, setGuardando] = useState(false)
@@ -53,7 +60,7 @@ export default function AdminCampeones() {
       .order('created_at', { ascending: false })
 
     if (error) {
-      setMensaje('Error al cargar campeones: ' + error.message)
+      setMensaje('Error al cargar finalistas: ' + error.message)
       return
     }
 
@@ -102,6 +109,7 @@ export default function AdminCampeones() {
           temporada: temporada.trim(),
           division: division.trim(),
           equipo: equipo.trim(),
+          posicion,
           foto_path: ruta,
         })
 
@@ -114,10 +122,11 @@ export default function AdminCampeones() {
         return
       }
 
-      setMensaje('¡Campeón registrado correctamente!')
+      setMensaje('¡Fotografía del finalista registrada correctamente!')
       setTemporada('')
       setDivision('')
       setEquipo('')
+      setPosicion('campeon')
       setFoto(null)
       e.target.reset()
       await cargarCampeones()
@@ -138,8 +147,11 @@ export default function AdminCampeones() {
 
   return (
     <main style={{ maxWidth: 900, margin: 'auto', padding: 24 }}>
-      <h1>🏆 Administración de Campeones</h1>
-      <p>Agrega fotografías de los equipos campeones de YSASL.</p>
+      <h1>🏆 Administración de Finalistas</h1>
+      <p>
+        Agrega fotografías del campeón, subcampeón y tercer lugar de YSASL.
+        Las fotografías de temporadas anteriores se conservan.
+      </p>
 
       <form
         onSubmit={guardar}
@@ -158,7 +170,7 @@ export default function AdminCampeones() {
             style={campo}
             value={temporada}
             onChange={e => setTemporada(e.target.value)}
-            placeholder="Ej. Verano / Invierno 2026"
+            placeholder="Ej. Primavera 2027"
             required
           />
         </label>
@@ -175,7 +187,21 @@ export default function AdminCampeones() {
         </label>
 
         <label>
-          Equipo campeón
+          Posición
+          <select
+            style={campo}
+            value={posicion}
+            onChange={e => setPosicion(e.target.value)}
+            required
+          >
+            <option value="campeon">🥇 Campeón</option>
+            <option value="subcampeon">🥈 Subcampeón</option>
+            <option value="tercer_lugar">🥉 Tercer lugar</option>
+          </select>
+        </label>
+
+        <label>
+          Nombre del equipo
           <input
             style={campo}
             value={equipo}
@@ -186,7 +212,7 @@ export default function AdminCampeones() {
         </label>
 
         <label>
-          Fotografía del campeón
+          Fotografía del equipo
           <input
             style={campo}
             type="file"
@@ -209,15 +235,15 @@ export default function AdminCampeones() {
             fontWeight: 'bold',
           }}
         >
-          {guardando ? 'Guardando...' : 'Subir foto del campeón'}
+          {guardando ? 'Guardando...' : 'Subir foto del finalista'}
         </button>
       </form>
 
       {mensaje && <p style={{ marginTop: 20 }}>{mensaje}</p>}
 
-      <h2 style={{ marginTop: 40 }}>Campeones registrados</h2>
+      <h2 style={{ marginTop: 40 }}>Finalistas registrados</h2>
 
-      {campeones.length === 0 && <p>Todavía no hay campeones registrados.</p>}
+      {campeones.length === 0 && <p>Todavía no hay finalistas registrados.</p>}
 
       <div style={{
         display: 'grid',
@@ -241,7 +267,8 @@ export default function AdminCampeones() {
                 style={{ width: '100%', height: 180, objectFit: 'cover' }}
               />
               <div style={{ padding: 14 }}>
-                <strong>🏆 {c.equipo}</strong>
+                <strong>{nombresPosicion[c.posicion] || '🏆 Campeón'}</strong>
+                <p><strong>{c.equipo}</strong></p>
                 <p>{c.division}</p>
                 <p>{c.temporada}</p>
               </div>
