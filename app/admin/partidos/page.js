@@ -24,6 +24,7 @@ const [mensaje, setMensaje] = useState('')
   const [campos, setCampos] = useState([])
 const [partidosJornada, setPartidosJornada] = useState([])
   const [partidoEditandoId, setPartidoEditandoId] = useState(null)
+  const [destacadosGuardando, setDestacadosGuardando] = useState([])
   const [divisionId, setDivisionId] = useState('')
   const [cargando, setCargando] = useState(true)
   const [error, setError] = useState('')
@@ -224,7 +225,8 @@ if (
       visitante_id,
       campo_id,
       fecha,
-      hora
+      hora,
+      destacado
     `)
     .eq('jornada_id', Number(idJornada))
     .order('id')
@@ -237,6 +239,34 @@ if (
 
   setPartidosJornada(data || [])
 }
+  async function cambiarDestacado(partido) {
+    const id = partido.id
+    if (destacadosGuardando.includes(id)) return
+    const nuevoValor = !Boolean(partido.destacado)
+    setDestacadosGuardando((actuales) => [...actuales, id])
+    setMensaje('')
+
+    const { error: errorDestacado } = await supabase
+      .from('partidos')
+      .update({ destacado: nuevoValor })
+      .eq('id', id)
+
+    if (errorDestacado) {
+      console.error('Error al actualizar partido destacado:', errorDestacado)
+      setMensaje(`No se pudo actualizar el destacado: ${errorDestacado.message}`)
+    } else {
+      setPartidosJornada((actuales) =>
+        actuales.map((item) =>
+          item.id === id ? { ...item, destacado: nuevoValor } : item
+        )
+      )
+      setMensaje(nuevoValor
+        ? 'Partido marcado como destacado en la página de inicio.'
+        : 'Partido retirado de los destacados manuales.')
+    }
+    setDestacadosGuardando((actuales) => actuales.filter((item) => item !== id))
+  }
+
 function editarPartido(partido) {
   setPartidoEditandoId(partido.id)
   setJornadaId(String(partido.jornada_id))
@@ -302,147 +332,6 @@ function editarPartido(partido) {
 
   setMensaje('Preferencia de horario guardada correctamente.')
   setGuardandoPreferencia(false)
-}
-  async function generarHorariosCampos() {
-  setMensaje('')
-
-  if (!jornadaId) {
-    setMensaje('Selecciona una jornada.')
-    return
-  }
-
-  const partidosPendientes = partidosJornada.filter(
-    (partido) => !partido.hora || !partido.campo_id
-  )
-
-  if (partidosPendientes.length === 0) {
-    setMensaje('Todos los partidos de esta jornada ya tienen hora y campo.')
-    return
-  }
-
-  if (camposSeleccionados.length === 0) {
-    setMensaje('No hay campos activos disponibles.')
-    return
-  }
-const espaciosOcupados = partidosJornada
-  .filter((partido) => partido.hora && partido.campo_id)
-  .map((partido) => ({
-    hora: partido.hora.substring(0, 5),
-    campo_id: Number(partido.campo_id)
-  }))
-  
-    
-    
-    
-    
-    
-    
-    
-    const horarios = horariosSeleccionados
-    const espaciosDisponibles = []
-    if (horariosSeleccionados.length === 0) {
-  setMensaje('Selecciona por lo menos un horario.')
-  return
-}
-
-horarios.forEach((horaDisponible) => {
-  campos
-  .filter((campo) => camposSeleccionados.includes(Number(campo.id)))
-  .forEach((campo) => {
-   const ocupado = espaciosOcupados.some(
-  (espacio) =>
-    espacio.hora === horaDisponible &&
-    espacio.campo_id === Number(campo.id)
-)
-
-if (ocupado) return
-    espaciosDisponibles.push({
-      hora: horaDisponible,
-      campo_id: campo.id
-    })
-  })
-})
-   if (espaciosDisponibles.length < partidosPendientes.length) {
-  setMensaje(
-    `No hay suficientes espacios. Hay ${partidosPendientes.length} partidos y solamente ${espaciosDisponibles.length} combinaciones de campo y horario disponibles.`
-  )
-  return
-}const asignaciones = partidosPendientes.map((partido) => {
-  const preferenciaLocal = preferenciasHorario.find(
-  (preferencia) =>
-    Number(preferencia.equipo_id) === Number(partido.local_id) &&
-    Number(preferencia.temporada_id) ===
-      Number(
-        divisiones.find(
-          (division) => Number(division.id) === Number(divisionId)
-        )?.temporada_id
-      ) &&
-    preferencia.activo
-)
-
-  const preferenciaVisitante = preferenciasHorario.find(
-  (preferencia) =>
-    Number(preferencia.equipo_id) === Number(partido.visitante_id) &&
-    Number(preferencia.temporada_id) ===
-      Number(
-        divisiones.find(
-          (division) => Number(division.id) === Number(divisionId)
-        )?.temporada_id
-      ) &&
-    preferencia.activo
-)
-
-  let indiceEspacio = -1
-
-  if (preferenciaLocal) {
-    const horaPreferida = preferenciaLocal.hora.slice(0, 5)
-
-    indiceEspacio = espaciosDisponibles.findIndex(
-      (espacio) => espacio.hora === horaPreferida
-    )
-  }
-
-  if (indiceEspacio === -1 && preferenciaVisitante) {
-    const horaPreferida = preferenciaVisitante.hora.slice(0, 5)
-
-    indiceEspacio = espaciosDisponibles.findIndex(
-      (espacio) => espacio.hora === horaPreferida
-    )
-  }
-
-  if (indiceEspacio === -1) {
-    indiceEspacio = 0
-  }
-
-  const espacio = espaciosDisponibles.splice(indiceEspacio, 1)[0]
-
-  return {
-    id: partido.id,
-    hora: espacio.hora,
-    campo_id: espacio.campo_id
-  }
-})
-    for (const asignacion of asignaciones) {
-  if (!asignacion.hora || !asignacion.campo_id) continue
-
-  const { error } = await supabase
-    .from('partidos')
-    .update({
-      hora: asignacion.hora,
-      campo_id: asignacion.campo_id
-    })
-    .eq('id', asignacion.id)
-
-  if (error) {
-    console.error(error)
-    setMensaje('Error al generar horarios y campos.')
-    return
-  }
-}
-    await cargarPartidosJornada(jornadaId)
-
-setMensaje('Horarios y campos generados correctamente.')
-
 }
   async function generarCalendarioAutomatico() {
   setMensaje('')
@@ -1726,6 +1615,15 @@ const preferenciaGuardada = preferenciasHorario.find(
     {campos.find((campo) => Number(campo.id) === Number(partido.campo_id))?.nombre || `Campo ${partido.campo_id}`}
   </span>
 )}
+<label style={{ display: 'inline-flex', alignItems: 'center', gap: '6px', marginLeft: '15px', marginTop: '8px', cursor: 'pointer' }}>
+  <input
+    type="checkbox"
+    checked={Boolean(partido.destacado)}
+    disabled={destacadosGuardando.includes(partido.id)}
+    onChange={() => cambiarDestacado(partido)}
+  />
+  ⭐ Destacar en inicio
+</label>
 <button
   type="button"
   onClick={() => editarPartido(partido)}
