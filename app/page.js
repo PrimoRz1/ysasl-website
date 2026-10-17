@@ -237,8 +237,26 @@ function elegirPartidosDestacados(partidos, clasificacion, divisiones, idsManual
   }).sort((a, b) => Number(b.manual) - Number(a.manual) || b.puntuacion - a.puntuacion || String(a.hora || '').localeCompare(String(b.hora || '')) || Number(a.id) - Number(b.id)).slice(0, 3)
 }
 
+// Busca el escudo por nombre y división; no cambia los registros existentes.
+function EscudoEquipo({ nombre, divisionId, escudos, size = 48 }) {
+  const equipo = escudos.find(e =>
+    normalizar(e.nombre) === normalizar(nombre) &&
+    String(e.division_id) === String(divisionId)
+  )
+  const ruta = equipo?.escudo_url || equipo?.logo_url || equipo?.escudo_path || null
+  const url = ruta && /^https?:\/\//i.test(ruta)
+    ? ruta
+    : ruta ? supabase.storage.from('escudos-equipos').getPublicUrl(ruta).data.publicUrl : null
+  if (!url) return null
+  return <img src={url} alt={`Escudo de ${nombre}`} loading="lazy" style={{ width: size, height: size, objectFit: 'contain', flexShrink: 0 }} />
+}
+
 export default async function Home() {
   const campeonesVigentes = await cargarCampeonesVigentes()
+  const { data: escudosDatos, error: errorEscudos } = await supabase
+    .from('equipos').select('*')
+  if (errorEscudos) console.error('Error consultando escudos:', errorEscudos.message)
+  const escudos = escudosDatos || []
 
   const { data: divisiones, error: errorDivisiones } = await supabase
     .from('divisiones')
@@ -351,9 +369,9 @@ export default async function Home() {
               <article key={partido.id} style={{ border: '1px solid #dbe3eb', borderRadius: '14px', padding: '20px', background: '#f8fafc', textAlign: 'center' }}>
                 <p style={{ margin: '0 0 12px', color: '#174d7a', fontWeight: 'bold' }}>{partido.divisionNombre}</p>
                 <div style={{ display: 'flex', alignItems: 'center', justifyContent: 'center', gap: '10px', fontSize: '18px' }}>
-                  <strong style={{ flex: 1 }}>{partido.local}</strong>
+                  <strong style={{ flex: 1, display: 'grid', justifyItems: 'center', gap: 6 }}><EscudoEquipo nombre={partido.local} divisionId={partido.division_id} escudos={escudos} size={64} />{partido.local}</strong>
                   <span style={{ color: '#64748b' }}>VS</span>
-                  <strong style={{ flex: 1 }}>{partido.visitante}</strong>
+                  <strong style={{ flex: 1, display: 'grid', justifyItems: 'center', gap: 6 }}><EscudoEquipo nombre={partido.visitante} divisionId={partido.division_id} escudos={escudos} size={64} />{partido.visitante}</strong>
                 </div>
                 <p style={{ marginBottom: '5px' }}>{fechaVisible(partido.fecha)} · {horaVisible(partido.hora)}</p>
                 <p style={{ margin: '5px 0' }}>{partido.campo ? `Campo ${partido.campo}` : 'Campo pendiente'}</p>
@@ -474,9 +492,9 @@ export default async function Home() {
                       Jornada {partido.jornada} · {fechaVisible(partido.fecha)} · {horaVisible(partido.hora)}
                     </p>
                     <div style={{ display: 'flex', alignItems: 'center', justifyContent: 'space-between', gap: '10px' }}>
-                      <strong style={{ flex: 1, textAlign: 'center' }}>{partido.local}</strong>
+                      <strong style={{ flex: 1, textAlign: 'center', display: 'grid', justifyItems: 'center', gap: 5 }}><EscudoEquipo nombre={partido.local} divisionId={partido.division_id} escudos={escudos} size={42} />{partido.local}</strong>
                       <span style={{ fontWeight: 'bold', color: '#64748b' }}>VS</span>
-                      <strong style={{ flex: 1, textAlign: 'center' }}>{partido.visitante}</strong>
+                      <strong style={{ flex: 1, textAlign: 'center', display: 'grid', justifyItems: 'center', gap: 5 }}><EscudoEquipo nombre={partido.visitante} divisionId={partido.division_id} escudos={escudos} size={42} />{partido.visitante}</strong>
                     </div>
                     <p style={{ textAlign: 'center', margin: '12px 0 0', fontSize: '13px', color: '#555' }}>
                       {partido.campo ? `Campo ${partido.campo}` : 'Campo pendiente'}
@@ -548,7 +566,7 @@ export default async function Home() {
                     {tabla.map((fila, index) => (
                       <tr key={`${division.id}-${fila.equipo}`} style={{ background: index < cupos ? '#dcfce7' : (index % 2 ? '#f8fafc' : 'white') }}>
                         <td style={celda}>{index + 1}</td>
-                        <td style={{ ...celda, textAlign: 'left', fontWeight: 'bold' }}>{fila.equipo}</td>
+                        <td style={{ ...celda, textAlign: 'left', fontWeight: 'bold' }}><span style={{ display: 'inline-flex', alignItems: 'center', gap: 8 }}><EscudoEquipo nombre={fila.equipo} divisionId={division.id} escudos={escudos} size={28} />{fila.equipo}</span></td>
                         <td style={celda}>{fila.pj}</td>
                         <td style={celda}>{fila.pg}</td>
                         <td style={celda}>{fila.pe}</td>
