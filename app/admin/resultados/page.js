@@ -31,7 +31,7 @@ const [jornadaId, setJornadaId] = useState('')
     const { data, error } = await supabase
       .from('calendario_partidos')
       .select('*')
-      .order('fecha', { ascending: true })
+      .order('fecha', { ascending: false })
       .order('hora', { ascending: true })
 
     if (error) {
@@ -57,17 +57,38 @@ const [jornadaId, setJornadaId] = useState('')
   }
 
   async function cargarDivisiones() {
-  const { data, error } = await supabase
-    .from('divisiones')
-    .select('id, nombre')
-    .order('orden', { ascending: true })
+  // Solo lectura: agregar el nombre del torneo a cada división.
+  const [respuestaDivisiones, respuestaTemporadas] = await Promise.all([
+    supabase
+      .from('divisiones')
+      .select('id, nombre, temporada_id')
+      .order('orden', { ascending: true }),
+    supabase
+      .from('temporadas')
+      .select('id, nombre'),
+  ])
 
-  if (error) {
-    console.error(error)
+  if (respuestaDivisiones.error || respuestaTemporadas.error) {
+    console.error(respuestaDivisiones.error || respuestaTemporadas.error)
+    setMensaje('Error al cargar los torneos y divisiones.')
     return
   }
 
-  setDivisiones(data || [])
+  const nombresTemporadas = new Map(
+    (respuestaTemporadas.data || []).map((temporada) => [
+      Number(temporada.id),
+      temporada.nombre,
+    ])
+  )
+
+  setDivisiones(
+    (respuestaDivisiones.data || []).map((division) => ({
+      ...division,
+      nombreTorneo:
+        nombresTemporadas.get(Number(division.temporada_id)) ||
+        `Torneo ${division.temporada_id}`,
+    }))
+  )
 }
 
   async function cargarJugadores() {
@@ -109,7 +130,7 @@ const [jornadaId, setJornadaId] = useState('')
     .from('jornadas')
     .select('id, numero, fecha')
     .eq('division_id', division)
-    .order('numero', { ascending: true })
+    .order('numero', { ascending: false })
 
   if (error) {
     console.error(error)
@@ -568,7 +589,7 @@ function agregarGoleador(partido, equipoId) {
     <option value="">Seleccionar división</option>
     {divisiones.map((division) => (
       <option key={division.id} value={division.id}>
-        {division.nombre}
+        {division.nombreTorneo} — {division.nombre}
       </option>
     ))}
   </select>
