@@ -200,9 +200,10 @@ function cantidadClasificados(totalEquipos) {
   return 0
 }
 
-// Selecciona hasta tres partidos de la fecha más próxima usando la clasificación.
-// No cambia partidos ni requiere tablas nuevas en Supabase.
-function elegirPartidosDestacados(partidos, clasificacion, divisiones) {
+// Selecciona hasta tres partidos de la próxima fecha.
+// Los marcados manualmente tienen prioridad y los espacios restantes se completan
+// automáticamente según la clasificación. No modifica los encuentros.
+function elegirPartidosDestacados(partidos, clasificacion, divisiones, idsManuales = new Set()) {
   const futuros = (partidos || []).filter(p => p.fecha && p.local && p.visitante)
   if (!futuros.length) return []
   const fechaProxima = futuros.reduce((min, p) => p.fecha < min ? p.fecha : min, futuros[0].fecha)
@@ -225,8 +226,15 @@ function elegirPartidosDestacados(partidos, clasificacion, divisiones) {
     const top = ambos && localPos < 4 && visitantePos < 4
     const puntuacion = top ? 100 - cercania * 10 : ambos ? 50 - cercania * 4 : 0
     const motivo = top ? 'Duelo entre los primeros lugares' : ambos && cercania <= 2 ? 'Rivales cercanos en la clasificación' : 'Partido de la próxima jornada'
-    return { ...p, divisionNombre: nombresDivisiones.get(String(p.division_id)) || 'División', motivo, puntuacion }
-  }).sort((a, b) => b.puntuacion - a.puntuacion || String(a.hora || '').localeCompare(String(b.hora || '')) || Number(a.id) - Number(b.id)).slice(0, 3)
+    const manual = idsManuales.has(String(p.id))
+    return {
+      ...p,
+      divisionNombre: nombresDivisiones.get(String(p.division_id)) || 'División',
+      motivo: manual ? '⭐ Seleccionado por la administración' : motivo,
+      puntuacion,
+      manual
+    }
+  }).sort((a, b) => Number(b.manual) - Number(a.manual) || b.puntuacion - a.puntuacion || String(a.hora || '').localeCompare(String(b.hora || '')) || Number(a.id) - Number(b.id)).slice(0, 3)
 }
 
 export default async function Home() {
@@ -274,7 +282,24 @@ export default async function Home() {
   .eq('activo', true)
   .eq('tipo', 'normal')
   .order('nombre')
-  const partidosDestacados = elegirPartidosDestacados(partidos, clasificacion, divisiones)
+  // calendario_partidos es una vista; la marca manual se guarda en la tabla partidos.
+  // Consultamos solo los IDs visibles de próximos encuentros para no alterar la vista.
+  const idsProximos = [...new Set((partidos || []).map(p => Number(p.id))
+    .filter(id => Number.isInteger(id) && id > 0))]
+  let idsManuales = new Set()
+  if (idsProximos.length > 0) {
+    const { data: manuales, error: errorManuales } = await supabase
+      .from('partidos')
+      .select('id')
+      .in('id', idsProximos)
+      .eq('destacado', true)
+    if (errorManuales) {
+      console.error('No se pudieron consultar los partidos destacados manuales:', errorManuales.message)
+    } else {
+      idsManuales = new Set((manuales || []).map(p => String(p.id)))
+    }
+  }
+  const partidosDestacados = elegirPartidosDestacados(partidos, clasificacion, divisiones, idsManuales)
 
   const hayError =
   errorDivisiones || errorClasificacion || errorPartidos || errorPatrocinadores || errorDestacados || errorNormales
