@@ -166,6 +166,31 @@ function urlFotoCampeon(fotoPath) {
 }
 
 
+function fechaHoyCalifornia() {
+  const partes = new Intl.DateTimeFormat('en-US', {
+    timeZone: 'America/Los_Angeles',
+    year: 'numeric',
+    month: '2-digit',
+    day: '2-digit'
+  }).formatToParts(new Date())
+  const valor = (tipo) => partes.find((p) => p.type === tipo)?.value || ''
+  return `${valor('year')}-${valor('month')}-${valor('day')}`
+}
+
+function fechaVisible(fecha) {
+  if (!fecha) return 'Fecha pendiente'
+  const [anio, mes, dia] = String(fecha).split('-')
+  return `${mes}/${dia}/${anio}`
+}
+
+function horaVisible(hora) {
+  if (!hora) return 'Hora pendiente'
+  const [horas, minutos] = String(hora).split(':').map(Number)
+  if (!Number.isFinite(horas) || !Number.isFinite(minutos)) return hora
+  return `${horas % 12 || 12}:${String(minutos).padStart(2, '0')} ${horas >= 12 ? 'PM' : 'AM'}`
+}
+
+
 export default async function Home() {
   const campeonesVigentes = await cargarCampeonesVigentes()
 
@@ -181,15 +206,15 @@ export default async function Home() {
     .order('dg', { ascending: false })
     .order('gf', { ascending: false })
 
+  // Solo los partidos programados a partir de hoy: la portada no repite
+  // todas las jornadas ni los resultados que ya están en /calendario.
   const { data: partidos, error: errorPartidos } = await supabase
     .from('calendario_partidos')
-    .select(
-      'id, jornada, division_id, division, fecha, hora, campo, local, visitante, goles_local, goles_visitante, estado'
-    )
-    .order('division_id')
-    .order('jornada')
-    .order('fecha')
-    .order('hora')
+    .select('id, jornada, division_id, fecha, hora, campo, local, visitante, estado')
+    .eq('estado', 'programado')
+    .gte('fecha', fechaHoyCalifornia())
+    .order('fecha', { ascending: true })
+    .order('hora', { ascending: true })
 
   const { data: patrocinadores, error: errorPatrocinadores } = await supabase
   .from('patrocinadores')
@@ -223,9 +248,34 @@ export default async function Home() {
         fontFamily: 'Arial, sans-serif'
       }}
     >
-      <h1>Yuba Sutter Adult Soccer League</h1>
-      <h2>YSASL</h2>
-      <p>Sitio oficial de la liga.</p>
+      <header style={{
+        background: 'linear-gradient(135deg, #0b2341, #174d7a)',
+        color: 'white',
+        padding: '35px 25px',
+        borderRadius: '18px',
+        textAlign: 'center',
+        marginBottom: '35px'
+      }}>
+        <p style={{ letterSpacing: '3px', fontWeight: 'bold', margin: '0 0 10px' }}>
+          YSASL
+        </p>
+        <h1 style={{ fontSize: 'clamp(25px, 4vw, 40px)', margin: '0 0 12px' }}>
+          Yuba Sutter Adult Soccer League
+        </h1>
+        <p style={{ margin: '0 0 22px', color: '#e1ecf6' }}>
+          La pasión por el fútbol nos une
+        </p>
+        <div style={{ display: 'flex', justifyContent: 'center', flexWrap: 'wrap', gap: '12px' }}>
+          <a href="/calendario" style={{
+            background: 'white', color: '#0b2341', textDecoration: 'none',
+            fontWeight: 'bold', padding: '11px 18px', borderRadius: '9px'
+          }}>Ver calendario</a>
+          <a href="/clasificacion" style={{
+            border: '1px solid #dbeafe', color: 'white', textDecoration: 'none',
+            fontWeight: 'bold', padding: '11px 18px', borderRadius: '9px'
+          }}>Ver clasificación</a>
+        </div>
+      </header>
 
       <section style={{ marginTop: '35px', marginBottom: '45px' }}>
         <h2 style={{ marginBottom: '8px' }}>🏆 Campeones vigentes</h2>
@@ -302,150 +352,120 @@ export default async function Home() {
           Error conectando con Supabase:{' '}
           {errorDivisiones?.message ||
             errorClasificacion?.message ||
-            errorPartidos?.message}
+            errorPartidos?.message ||
+            errorPatrocinadores?.message ||
+            errorDestacados?.message ||
+            errorNormales?.message}
         </div>
       )}
 
-      {divisiones?.map((division) => {
-        const tabla = clasificacion?.filter(
-          (fila) => fila.division_id === division.id
-        )
+      <section style={{ marginTop: '40px', marginBottom: '55px' }}>
+        <h2 style={{ marginBottom: '8px' }}>⚽ Próximos partidos</h2>
+        <p style={{ marginTop: 0, color: '#555' }}>
+          Los encuentros más cercanos de cada división.
+        </p>
 
-        const partidosDivision = partidos?.filter(
-          (partido) => partido.division_id === division.id
-        )
+        {(divisiones || []).map((division) => {
+          const proximos = (partidos || [])
+            .filter((partido) => Number(partido.division_id) === Number(division.id))
+            .slice(0, 4)
 
-        return (
-          <section
-            key={division.id}
-            style={{ marginTop: '45px', marginBottom: '60px' }}
-          >
-            <h2>{division.nombre}</h2>
+          if (proximos.length === 0) return null
 
-            <h3>Clasificación</h3>
+          return (
+            <div key={division.id} style={{ marginTop: '25px' }}>
+              <h3 style={{ color: '#0b2341' }}>{division.nombre}</h3>
+              <div style={{ display: 'grid', gridTemplateColumns: 'repeat(auto-fit, minmax(260px, 1fr))', gap: '12px' }}>
+                {proximos.map((partido) => (
+                  <article key={partido.id} style={{
+                    border: '1px solid #dbe3eb', borderRadius: '12px',
+                    padding: '16px', background: '#f8fafc'
+                  }}>
+                    <p style={{ fontSize: '13px', color: '#555', margin: '0 0 12px' }}>
+                      Jornada {partido.jornada} · {fechaVisible(partido.fecha)} · {horaVisible(partido.hora)}
+                    </p>
+                    <div style={{ display: 'flex', alignItems: 'center', justifyContent: 'space-between', gap: '10px' }}>
+                      <strong style={{ flex: 1, textAlign: 'center' }}>{partido.local}</strong>
+                      <span style={{ fontWeight: 'bold', color: '#64748b' }}>VS</span>
+                      <strong style={{ flex: 1, textAlign: 'center' }}>{partido.visitante}</strong>
+                    </div>
+                    <p style={{ textAlign: 'center', margin: '12px 0 0', fontSize: '13px', color: '#555' }}>
+                      {partido.campo ? `Campo ${partido.campo}` : 'Campo pendiente'}
+                    </p>
+                  </article>
+                ))}
+              </div>
+            </div>
+          )
+        })}
 
-            <div style={{ overflowX: 'auto' }}>
-              <table
-                style={{
-                  borderCollapse: 'collapse',
-                  width: '100%',
-                  marginBottom: '35px'
-                }}
-              >
-                <thead>
-                  <tr>
-                    <th style={celda}>#</th>
-                    <th style={{ ...celda, textAlign: 'left' }}>Equipo</th>
-                    <th style={celda}>PJ</th>
-                    <th style={celda}>PG</th>
-                    <th style={celda}>PE</th>
-                    <th style={celda}>PP</th>
-                    <th style={celda}>GF</th>
-                    <th style={celda}>GC</th>
-                    <th style={celda}>DG</th>
-                    <th style={celda}>PTS</th>
-                  </tr>
-                </thead>
+        {!errorPartidos && !(partidos || []).some((p) =>
+          (divisiones || []).some((d) => Number(d.id) === Number(p.division_id))
+        ) && (
+          <p style={{ padding: '15px', background: '#f3f4f6', borderRadius: '10px' }}>
+            No hay partidos próximos programados por el momento.
+          </p>
+        )}
 
-                <tbody>
-                  {tabla?.map((fila, index) => (
-                    <tr key={`${division.id}-${fila.equipo}`}>
-                      <td style={celda}>{index + 1}</td>
+        <p style={{ textAlign: 'center', marginTop: '22px' }}>
+          <a href="/calendario" style={{ color: '#0b4a84', fontWeight: 'bold' }}>
+            Ver calendario y resultados completos →
+          </a>
+        </p>
+      </section>
 
-                      <td style={{ ...celda, textAlign: 'left' }}>
-                        {fila.equipo}
-                      </td>
+      <section style={{ marginTop: '40px', marginBottom: '60px' }}>
+        <h2 style={{ marginBottom: '8px' }}>📊 Clasificación completa</h2>
+        <p style={{ color: '#555', marginTop: 0 }}>
+          Todas las posiciones y estadísticas oficiales de cada división.
+        </p>
 
-                      <td style={celda}>{fila.pj}</td>
-                      <td style={celda}>{fila.pg}</td>
-                      <td style={celda}>{fila.pe}</td>
-                      <td style={celda}>{fila.pp}</td>
-                      <td style={celda}>{fila.gf}</td>
-                      <td style={celda}>{fila.gc}</td>
-                      <td style={celda}>{fila.dg}</td>
+        {(divisiones || []).map((division) => {
+          const tabla = (clasificacion || []).filter(
+            (fila) => Number(fila.division_id) === Number(division.id)
+          )
 
-                      <td style={celda}>
-                        <strong>{fila.pts}</strong>
-                      </td>
+          return (
+            <div key={division.id} style={{ marginTop: '30px', marginBottom: '40px' }}>
+              <h3 style={{ color: '#0b2341' }}>{division.nombre}</h3>
+              <div style={{ overflowX: 'auto', borderRadius: '10px' }}>
+                <table style={{ borderCollapse: 'collapse', width: '100%' }}>
+                  <thead style={{ background: '#0b2341', color: 'white' }}>
+                    <tr>
+                      <th style={celda}>#</th>
+                      <th style={{ ...celda, textAlign: 'left' }}>Equipo</th>
+                      <th style={celda}>PJ</th>
+                      <th style={celda}>PG</th>
+                      <th style={celda}>PE</th>
+                      <th style={celda}>PP</th>
+                      <th style={celda}>GF</th>
+                      <th style={celda}>GC</th>
+                      <th style={celda}>DG</th>
+                      <th style={celda}>PTS</th>
                     </tr>
-                  ))}
-                </tbody>
-              </table>
-            </div>
-
-            <h3>Calendario y Resultados</h3>
-
-            <div style={{ overflowX: 'auto' }}>
-              <table
-                style={{
-                  borderCollapse: 'collapse',
-                  width: '100%'
-                }}
-              >
-                <thead>
-                  <tr>
-                    <th style={celda}>Jornada</th>
-                    <th style={celda}>Fecha</th>
-                    <th style={celda}>Hora</th>
-                    <th style={celda}>Campo</th>
-                    <th style={celda}>Local</th>
-                    <th style={celda}>Resultado</th>
-                    <th style={celda}>Visitante</th>
-                    <th style={celda}>Estado</th>
-                  </tr>
-                </thead>
-
-                <tbody>
-                  {partidosDivision?.map((partido) => {
-                    const resultado =
-                      partido.estado === 'finalizado'
-                        ? `${partido.goles_local} - ${partido.goles_visitante}`
-                        : 'vs'
-
-                    return (
-                      <tr key={partido.id}>
-                        <td style={celda}>{partido.jornada}</td>
-
-                        <td style={celda}>
-                          {partido.fecha || 'Pendiente'}
-                        </td>
-
-                        <td style={celda}>
-                          {partido.hora
-                            ? partido.hora.slice(0, 5)
-                            : 'Pendiente'}
-                        </td>
-
-                        <td style={celda}>
-                          {partido.campo
-                            ? `Campo ${partido.campo}`
-                            : 'Pendiente'}
-                        </td>
-
-                        <td style={celda}>{partido.local}</td>
-
-                        <td style={celda}>
-                          <strong>{resultado}</strong>
-                        </td>
-
-                        <td style={celda}>{partido.visitante}</td>
-
-                        <td style={celda}>
-                          {partido.estado === 'finalizado'
-                            ? 'Finalizado'
-                            : partido.estado === 'programado'
-                            ? 'Programado'
-                            : partido.estado}
-                        </td>
+                  </thead>
+                  <tbody>
+                    {tabla.map((fila, index) => (
+                      <tr key={`${division.id}-${fila.equipo}`} style={{ background: index % 2 ? '#f8fafc' : 'white' }}>
+                        <td style={celda}>{index + 1}</td>
+                        <td style={{ ...celda, textAlign: 'left', fontWeight: 'bold' }}>{fila.equipo}</td>
+                        <td style={celda}>{fila.pj}</td>
+                        <td style={celda}>{fila.pg}</td>
+                        <td style={celda}>{fila.pe}</td>
+                        <td style={celda}>{fila.pp}</td>
+                        <td style={celda}>{fila.gf}</td>
+                        <td style={celda}>{fila.gc}</td>
+                        <td style={celda}>{fila.dg}</td>
+                        <td style={celda}><strong>{fila.pts}</strong></td>
                       </tr>
-                    )
-                  })}
-                </tbody>
-              </table>
+                    ))}
+                  </tbody>
+                </table>
+              </div>
             </div>
-          </section>
-        )
-      })}
+          )
+        })}
+      </section>
 
       {patrocinadores && patrocinadores.length > 0 && (
         <section
