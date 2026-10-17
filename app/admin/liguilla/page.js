@@ -596,7 +596,7 @@ export default function AdminLiguillaPage() {
       setTipoBorrador(nuevoTipo)
       setMostrarBorrador(true)
     } catch (err) {
-      setErrorBorrador(err.message || 'No se pudo preparar el borrador.')
+      setErrorBorrador(err.message || 'No se pudo preparar la programación.')
     } finally {
       setCargandoCampos(false)
     }
@@ -660,7 +660,7 @@ export default function AdminLiguillaPage() {
       Number(otro.campoId) === Number(partido.campoId) &&
       hayConflictoHorario(otro.hora, partido.hora)
     )
-    return repetido ? `Conflicto con el partido ${repetido.numero} del borrador` : null
+    return repetido ? `Conflicto con el partido ${repetido.numero} de la programación` : null
   }), [borrador, partidosOcupados])
 
   function asignarAutomaticamente() {
@@ -960,9 +960,9 @@ export default function AdminLiguillaPage() {
 
         {esTemporadaOficial && cantidad > 0 && <div style={caja}>
           <h2>Preparar partidos — {divisionActual?.nombre} 2026</h2>
-          <p>Se preparan cuartos o repechaje, después semifinales y por último final y tercer lugar. <strong>Este borrador no modifica los resultados oficiales.</strong></p>
+          <p>Se preparan cuartos o repechaje, después semifinales y por último final y tercer lugar. <strong>Puedes revisar fechas, horarios y campos antes de confirmar la programación. Los resultados oficiales no se modifican.</strong></p>
           <button type="button" disabled={!faseRegularValidada || cargandoCampos || cargando || guardando} onClick={prepararBorrador}>
-            {cargandoCampos ? 'Consultando partidos...' : 'Preparar borrador de partidos'}
+            {cargandoCampos ? 'Consultando partidos...' : 'Preparar partidos de liguilla'}
           </button>
           <button type="button" onClick={asignarAutomaticamente}
             disabled={!mostrarBorrador || !disponibilidadLista || guardando}
@@ -982,8 +982,8 @@ export default function AdminLiguillaPage() {
           </p>}
           {mostrarBorrador && <p style={{ color: listoParaConfirmar ? '#166534' : '#b45309', fontWeight: 'bold' }}>
             {listoParaConfirmar
-              ? '✓ Borrador revisado y sin conflictos. Falta habilitar el guardado oficial.'
-              : '⚠ Revisa resultados, horarios, campos y conflictos del borrador.'}
+              ? '✓ Programación revisada y sin conflictos. Falta habilitar el guardado oficial.'
+              : '⚠ Revisa resultados, horarios, campos y conflictos de la programación.'}
           </p>}
           {errorBorrador && <p style={{ color: '#b42318' }}>{errorBorrador}</p>}
           {mostrarBorrador && <>
