@@ -247,7 +247,9 @@ function EscudoEquipo({ nombre, divisionId, escudos, size = 48 }) {
   const url = ruta && /^https?:\/\//i.test(ruta)
     ? ruta
     : ruta ? supabase.storage.from('escudos-equipos').getPublicUrl(ruta).data.publicUrl : null
-  if (!url) return null
+  if (!url) return (
+    <span aria-hidden="true" style={{ width: size, height: size, display: 'grid', placeItems: 'center', flexShrink: 0, borderRadius: '50%', background: '#e2e8f0', fontSize: Math.round(size * 0.48) }}>⚽</span>
+  )
   return <img src={url} alt={`Escudo de ${nombre}`} loading="lazy" style={{ width: size, height: size, objectFit: 'contain', flexShrink: 0 }} />
 }
 
