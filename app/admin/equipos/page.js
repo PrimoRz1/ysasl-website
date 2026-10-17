@@ -397,6 +397,32 @@ export default function AdminEquiposPage() {
             {editandoId === equipo.id && (
               <div style={{ marginTop: '12px', padding: '16px', border: '1px solid #ddd', borderRadius: '8px' }}>
                 <h3 style={{ marginTop: 0 }}>Editar {equipo.nombre}</h3>
+                <div style={{ marginTop: '20px', marginBottom: '22px', padding: '16px', background: '#f6f9fc', borderRadius: '8px' }}>
+                  <h4 style={{ marginTop: 0 }}>Escudo del equipo</h4>
+                  {equipo.escudo_url ? (
+                    <div style={{ marginBottom: '12px' }}>
+                      <img src={equipo.escudo_url} alt={`Escudo de ${equipo.nombre}`} style={{ width: '110px', height: '110px', objectFit: 'contain' }} />
+                    </div>
+                  ) : <p>Este equipo todavía no tiene escudo.</p>}
+                  <label htmlFor={`escudo-${equipo.id}`}>Seleccionar imagen PNG, JPG o WEBP (máximo 2 MB)</label>
+                  <div style={{ marginTop: '8px' }}>
+                    <input
+                      id={`escudo-${equipo.id}`}
+                      type="file"
+                      accept="image/png,image/jpeg,image/webp"
+                      disabled={ocupado}
+                      onChange={(e) => setArchivoEscudo(e.target.files?.[0] || null)}
+                    />
+                  </div>
+                  <button type="button" disabled={ocupado || !archivoEscudo} onClick={() => subirEscudo(equipo)} style={estiloBoton}>
+                    {ocupado ? 'Procesando...' : 'Subir escudo'}
+                  </button>
+                  {equipo.escudo_url && (
+                    <button type="button" disabled={ocupado} onClick={() => eliminarEscudo(equipo)} style={{ ...estiloBoton, color: '#b42318' }}>
+                      Eliminar escudo
+                    </button>
+                  )}
+                </div>
                 <p><strong>Nombre del equipo</strong></p>
                 <input type="text" value={nombreEditado} onChange={(e) => setNombreEditado(e.target.value)} style={estiloInput} />
                 <button type="button" disabled={ocupado} onClick={() => guardarNombre(equipo)} style={estiloBoton}>
