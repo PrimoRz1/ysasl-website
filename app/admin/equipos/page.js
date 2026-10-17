@@ -17,6 +17,7 @@ export default function AdminEquiposPage() {
   const [nombreEditado, setNombreEditado] = useState('')
   const [inscripcionEditadaId, setInscripcionEditadaId] = useState('')
   const [divisionEditadaId, setDivisionEditadaId] = useState('')
+  const [archivoEscudo, setArchivoEscudo] = useState(null)
 
   useEffect(() => {
     cargarDatos()
@@ -24,7 +25,7 @@ export default function AdminEquiposPage() {
 
   async function cargarDatos() {
     const [rEquipos, rDivisiones, rTemporadas, rInscripciones] = await Promise.all([
-      supabase.from('equipos').select('id, nombre, activo').order('nombre'),
+      supabase.from('equipos').select('id, nombre, activo, escudo_url').order('nombre'),
       supabase.from('divisiones').select('id, nombre, temporada_id').order('orden'),
       supabase.from('temporadas').select('id, nombre, activa').order('id', { ascending: false }),
       supabase.from('inscripciones_equipo').select('id, equipo_id, division_id, activo')
@@ -102,6 +103,7 @@ export default function AdminEquiposPage() {
 
   function empezarEdicion(equipo) {
     const primera = inscripcionesActivas(equipo.id)[0]
+    setArchivoEscudo(null)
     setEditandoId(equipo.id)
     setNombreEditado(equipo.nombre)
     setInscripcionEditadaId(primera ? String(primera.id) : '')
@@ -245,6 +247,86 @@ export default function AdminEquiposPage() {
       setMensaje(`Se eliminó ${equipo.nombre} correctamente.`)
     } catch (error) {
       setMensaje(`No se pudo eliminar el equipo: ${error.message}`)
+    } finally {
+      setOcupado(false)
+    }
+  }
+
+  const BUCKET_ESCUDOS = 'escudos-equipos'
+
+  function rutaEscudo(url) {
+    if (!url) return null
+    const marcador = `/storage/v1/object/public/${BUCKET_ESCUDOS}/`
+    const indice = url.indexOf(marcador)
+    if (indice === -1) return null
+    return decodeURIComponent(url.slice(indice + marcador.length).split('?')[0])
+  }
+
+  async function subirEscudo(equipo) {
+    if (ocupado || !archivoEscudo) {
+      setMensaje('Selecciona primero una imagen para el escudo.')
+      return
+    }
+    if (!['image/png', 'image/jpeg', 'image/webp'].includes(archivoEscudo.type)) {
+      setMensaje('Utiliza una imagen PNG, JPG o WEBP.')
+      return
+    }
+    if (archivoEscudo.size > 2 * 1024 * 1024) {
+      setMensaje('El archivo no puede superar los 2 MB.')
+      return
+    }
+    setOcupado(true)
+    setMensaje('')
+    try {
+      const extension = archivoEscudo.type === 'image/png' ? 'png' : archivoEscudo.type === 'image/webp' ? 'webp' : 'jpg'
+      const rutaNueva = `${equipo.id}/${Date.now()}-${Math.random().toString(36).slice(2, 10)}.${extension}`
+      const { error: errorSubida } = await supabase.storage.from(BUCKET_ESCUDOS).upload(rutaNueva, archivoEscudo, {
+        contentType: archivoEscudo.type,
+        upsert: false
+      })
+      if (errorSubida) throw errorSubida
+      const { data: urlData } = supabase.storage.from(BUCKET_ESCUDOS).getPublicUrl(rutaNueva)
+      const { data: actualizados, error: errorEquipo } = await supabase.from('equipos')
+        .update({ escudo_url: urlData.publicUrl }).eq('id', equipo.id).select('id')
+      if (errorEquipo || !actualizados?.length) {
+        await supabase.storage.from(BUCKET_ESCUDOS).remove([rutaNueva])
+        throw new Error(errorEquipo?.message || 'No se pudo guardar la URL del escudo en equipos.')
+      }
+      const anterior = rutaEscudo(equipo.escudo_url)
+      let aviso = 'Escudo guardado correctamente.'
+      if (anterior) {
+        const { error: errorBorrado } = await supabase.storage.from(BUCKET_ESCUDOS).remove([anterior])
+        if (errorBorrado) aviso += ' El escudo anterior no se pudo borrar del almacenamiento.'
+      }
+      setArchivoEscudo(null)
+      await cargarDatos()
+      setMensaje(aviso)
+    } catch (error) {
+      setMensaje(`No se pudo subir el escudo: ${error.message}`)
+    } finally {
+      setOcupado(false)
+    }
+  }
+
+  async function eliminarEscudo(equipo) {
+    if (ocupado || !equipo.escudo_url) return
+    if (!window.confirm(`¿Eliminar el escudo de ${equipo.nombre}?`)) return
+    setOcupado(true)
+    setMensaje('')
+    try {
+      const { data, error } = await supabase.from('equipos')
+        .update({ escudo_url: null }).eq('id', equipo.id).select('id')
+      if (error || !data?.length) throw new Error(error?.message || 'No se pudo actualizar el equipo.')
+      const ruta = rutaEscudo(equipo.escudo_url)
+      let aviso = 'Escudo eliminado del equipo.'
+      if (ruta) {
+        const { error: errorStorage } = await supabase.storage.from(BUCKET_ESCUDOS).remove([ruta])
+        if (errorStorage) aviso += ' No se pudo eliminar el archivo del almacenamiento.'
+      }
+      await cargarDatos()
+      setMensaje(aviso)
+    } catch (error) {
+      setMensaje(`No se pudo eliminar el escudo: ${error.message}`)
     } finally {
       setOcupado(false)
     }
