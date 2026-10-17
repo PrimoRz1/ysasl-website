@@ -200,6 +200,35 @@ function cantidadClasificados(totalEquipos) {
   return 0
 }
 
+// Selecciona hasta tres partidos de la fecha más próxima usando la clasificación.
+// No cambia partidos ni requiere tablas nuevas en Supabase.
+function elegirPartidosDestacados(partidos, clasificacion, divisiones) {
+  const futuros = (partidos || []).filter(p => p.fecha && p.local && p.visitante)
+  if (!futuros.length) return []
+  const fechaProxima = futuros.reduce((min, p) => p.fecha < min ? p.fecha : min, futuros[0].fecha)
+  const tablaPorDivision = new Map()
+  for (const fila of clasificacion || []) {
+    const clave = String(fila.division_id)
+    if (!tablaPorDivision.has(clave)) tablaPorDivision.set(clave, [])
+    tablaPorDivision.get(clave).push(fila)
+  }
+  for (const tabla of tablaPorDivision.values()) {
+    tabla.sort((a, b) => Number(b.pts || 0) - Number(a.pts || 0) || Number(b.dg || 0) - Number(a.dg || 0) || Number(b.gf || 0) - Number(a.gf || 0))
+  }
+  const nombresDivisiones = new Map((divisiones || []).map(d => [String(d.id), d.nombre]))
+  return futuros.filter(p => p.fecha === fechaProxima).map(p => {
+    const tabla = tablaPorDivision.get(String(p.division_id)) || []
+    const localPos = tabla.findIndex(f => normalizar(f.equipo) === normalizar(p.local))
+    const visitantePos = tabla.findIndex(f => normalizar(f.equipo) === normalizar(p.visitante))
+    const ambos = localPos >= 0 && visitantePos >= 0
+    const cercania = ambos ? Math.abs(localPos - visitantePos) : 99
+    const top = ambos && localPos < 4 && visitantePos < 4
+    const puntuacion = top ? 100 - cercania * 10 : ambos ? 50 - cercania * 4 : 0
+    const motivo = top ? 'Duelo entre los primeros lugares' : ambos && cercania <= 2 ? 'Rivales cercanos en la clasificación' : 'Partido de la próxima jornada'
+    return { ...p, divisionNombre: nombresDivisiones.get(String(p.division_id)) || 'División', motivo, puntuacion }
+  }).sort((a, b) => b.puntuacion - a.puntuacion || String(a.hora || '').localeCompare(String(b.hora || '')) || Number(a.id) - Number(b.id)).slice(0, 3)
+}
+
 export default async function Home() {
   const campeonesVigentes = await cargarCampeonesVigentes()
 
@@ -245,6 +274,8 @@ export default async function Home() {
   .eq('activo', true)
   .eq('tipo', 'normal')
   .order('nombre')
+  const partidosDestacados = elegirPartidosDestacados(partidos, clasificacion, divisiones)
+
   const hayError =
   errorDivisiones || errorClasificacion || errorPartidos || errorPatrocinadores || errorDestacados || errorNormales
 
@@ -285,6 +316,30 @@ export default async function Home() {
           }}>Ver clasificación</a>
         </div>
       </header>
+
+      <section style={{ marginTop: '35px', marginBottom: '45px' }}>
+        <h2 style={{ marginBottom: '8px' }}>🔥 Partidos Destacados</h2>
+        <p style={{ marginTop: 0, color: '#555' }}>Los tres encuentros más interesantes de la próxima fecha programada.</p>
+        {partidosDestacados.length > 0 ? (
+          <div style={{ display: 'grid', gridTemplateColumns: 'repeat(auto-fit, minmax(260px, 1fr))', gap: '16px', marginTop: '20px' }}>
+            {partidosDestacados.map(partido => (
+              <article key={partido.id} style={{ border: '1px solid #dbe3eb', borderRadius: '14px', padding: '20px', background: '#f8fafc', textAlign: 'center' }}>
+                <p style={{ margin: '0 0 12px', color: '#174d7a', fontWeight: 'bold' }}>{partido.divisionNombre}</p>
+                <div style={{ display: 'flex', alignItems: 'center', justifyContent: 'center', gap: '10px', fontSize: '18px' }}>
+                  <strong style={{ flex: 1 }}>{partido.local}</strong>
+                  <span style={{ color: '#64748b' }}>VS</span>
+                  <strong style={{ flex: 1 }}>{partido.visitante}</strong>
+                </div>
+                <p style={{ marginBottom: '5px' }}>{fechaVisible(partido.fecha)} · {horaVisible(partido.hora)}</p>
+                <p style={{ margin: '5px 0' }}>{partido.campo ? `Campo ${partido.campo}` : 'Campo pendiente'}</p>
+                <p style={{ fontWeight: 'bold', color: '#0b4a84', marginBottom: 0 }}>{partido.motivo}</p>
+              </article>
+            ))}
+          </div>
+        ) : (
+          <p style={{ padding: '15px', background: '#f3f4f6', borderRadius: '10px' }}>No hay partidos próximos programados por el momento.</p>
+        )}
+      </section>
 
       <section style={{ marginTop: '35px', marginBottom: '45px' }}>
         <h2 style={{ marginBottom: '8px' }}>🏆 Campeones vigentes</h2>
