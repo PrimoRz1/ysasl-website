@@ -191,6 +191,15 @@ function horaVisible(hora) {
 }
 
 
+// Los cupos se ajustan automáticamente al número de equipos de cada división.
+// Verde significa zona de clasificación; no modifica ni confirma resultados.
+function cantidadClasificados(totalEquipos) {
+  if (totalEquipos >= 10) return 8
+  if (totalEquipos >= 7) return 6
+  if (totalEquipos >= 4) return 4
+  return 0
+}
+
 export default async function Home() {
   const campeonesVigentes = await cargarCampeonesVigentes()
 
@@ -424,10 +433,21 @@ export default async function Home() {
           const tabla = (clasificacion || []).filter(
             (fila) => Number(fila.division_id) === Number(division.id)
           )
+          const cupos = cantidadClasificados(tabla.length)
 
           return (
             <div key={division.id} style={{ marginTop: '30px', marginBottom: '40px' }}>
               <h3 style={{ color: '#0b2341' }}>{division.nombre}</h3>
+              {cupos > 0 && (
+                <p style={{ fontSize: '14px', color: '#166534', margin: '5px 0 14px' }}>
+                  <span aria-hidden="true" style={{
+                    display: 'inline-block', width: '13px', height: '13px',
+                    background: '#dcfce7', border: '1px solid #86b99a',
+                    borderRadius: '3px', verticalAlign: 'middle', marginRight: '7px'
+                  }} />
+                  Verde claro: zona de liguilla (primeros {cupos} de {tabla.length} equipos).
+                </p>
+              )}
               <div style={{ overflowX: 'auto', borderRadius: '10px' }}>
                 <table style={{ borderCollapse: 'collapse', width: '100%' }}>
                   <thead style={{ background: '#0b2341', color: 'white' }}>
@@ -446,7 +466,7 @@ export default async function Home() {
                   </thead>
                   <tbody>
                     {tabla.map((fila, index) => (
-                      <tr key={`${division.id}-${fila.equipo}`} style={{ background: index % 2 ? '#f8fafc' : 'white' }}>
+                      <tr key={`${division.id}-${fila.equipo}`} style={{ background: index < cupos ? '#dcfce7' : (index % 2 ? '#f8fafc' : 'white') }}>
                         <td style={celda}>{index + 1}</td>
                         <td style={{ ...celda, textAlign: 'left', fontWeight: 'bold' }}>{fila.equipo}</td>
                         <td style={celda}>{fila.pj}</td>
