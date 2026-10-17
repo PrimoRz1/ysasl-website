@@ -4,10 +4,12 @@ import { useEffect, useMemo, useState } from 'react'
 import { useRouter } from 'next/navigation'
 import { supabase } from '../../../lib/supabase'
 
-// YSASL: consulta de cualquier temporada; escritura EXCLUSIVA para la prueba 2027.
-// Las funciones SQL deben comprobar la misma protección: no basta con el navegador.
-const TEMPORADA_PRUEBA = 9
-const DIVISIONES_PRUEBA = [12, 13]
+// YSASL: liguilla oficial 2026. Preparación habilitada, guardado todavía bloqueado.
+// IMPORTANTE: habilitar el guardado SOLO después de instalar y verificar las RPC oficiales
+// con autorización de administrador, validaciones y transacciones en Supabase.
+const TEMPORADA_OFICIAL = 1
+const DIVISIONES_OFICIALES = [1, 2]
+const GUARDADO_OFICIAL_HABILITADO = false
 const caja = { border: '1px solid #d5dbe2', borderRadius: 10, padding: 18, marginTop: 18 }
 const selector = { padding: 10, width: '100%', maxWidth: 580, marginTop: 6 }
 
@@ -22,24 +24,16 @@ function normalizarEtiqueta(valor) {
     .trim()
 }
 
-function coincideTemporadaFoto(nombreFoto, nombreTorneo, esPrueba) {
+function coincideTemporadaFoto(nombreFoto, nombreTorneo) {
   const foto = normalizarEtiqueta(nombreFoto)
   const torneo = normalizarEtiqueta(nombreTorneo)
-  if (!foto || !torneo) return false
-  // Las fotos de prueba se guardaron con un título manual distinto.
-  return foto === torneo || (esPrueba && foto === 'temporada de prueba')
+  return Boolean(foto && torneo && foto === torneo)
 }
 
-function coincideEquipoFoto(nombreFoto, nombreTorneo, esPrueba) {
+function coincideEquipoFoto(nombreFoto, nombreEquipo) {
   const foto = normalizarEtiqueta(nombreFoto)
-  const torneo = normalizarEtiqueta(nombreTorneo)
-  if (!foto || !torneo) return false
-  if (foto === torneo) return true
-  if (!esPrueba) return false
-  // Alias EXCLUSIVO de la prueba: "Prueba 6" = "PRUEBA WEB PRIMERA 6".
-  const abreviado = foto.match(/^prueba ([0-9]+)$/)
-  const completo = torneo.match(/^prueba web (?:primera|segunda) ([0-9]+)$/)
-  return Boolean(abreviado && completo && abreviado[1] === completo[1])
+  const equipo = normalizarEtiqueta(nombreEquipo)
+  return Boolean(foto && equipo && foto === equipo)
 }
 
 function coincidePosicionFoto(posicionFoto, codigoPodio) {
@@ -119,6 +113,58 @@ function crearTabla(equipos, partidos) {
     a.nombre.localeCompare(b.nombre) || a.id - b.id)
 }
 
+// La temporada 2026 tiene dos formatos REALES por división:
+// Primera (7 equipos): ida y vuelta, 42 partidos.
+// Segunda (14 equipos): una vuelta, 91 partidos.
+// No se usa temporadas.formato como único criterio porque figura ida_vuelta
+// incluso para la Segunda División, que se disputó a una sola vuelta.
+function validarFaseRegular(equipos, partidos) {
+  const n = equipos.length
+  if (n < 4) return { valida: false, mensaje: 'Se necesitan al menos cuatro equipos.' }
+  const unaVuelta = n * (n - 1) / 2
+  const idaVuelta = n * (n - 1)
+  const formato = partidos.length === unaVuelta ? 'una_vuelta'
+    : partidos.length === idaVuelta ? 'ida_vuelta' : null
+  if (!formato) {
+    return { valida: false, mensaje: `Hay ${partidos.length} partidos regulares. Para ${n} equipos se esperan ${unaVuelta} (una vuelta) o ${idaVuelta} (ida y vuelta).` }
+  }
+  const ids = new Set(equipos.map((e) => Number(e.id)))
+  const enfrentamientos = new Map()
+  for (const p of partidos) {
+    const local = Number(p.local_id)
+    const visitante = Number(p.visitante_id)
+    const gl = Number(p.goles_local)
+    const gv = Number(p.goles_visitante)
+    if (p.estado !== 'finalizado' || p.goles_local == null || p.goles_visitante == null ||
+      !Number.isInteger(gl) || !Number.isInteger(gv) || gl < 0 || gv < 0) {
+      return { valida: false, mensaje: 'Hay partidos sin resultado final válido.' }
+    }
+    if (!ids.has(local) || !ids.has(visitante) || local === visitante) {
+      return { valida: false, mensaje: 'Hay partidos con equipos incorrectos o no inscritos.' }
+    }
+    const clave = [Math.min(local, visitante), Math.max(local, visitante)].join('-')
+    const cruces = enfrentamientos.get(clave) || []
+    cruces.push([local, visitante])
+    enfrentamientos.set(clave, cruces)
+  }
+  if (enfrentamientos.size !== unaVuelta) {
+    return { valida: false, mensaje: 'Hay rivales repetidos o faltan enfrentamientos de la fase regular.' }
+  }
+  for (const cruces of enfrentamientos.values()) {
+    if (formato === 'una_vuelta' && cruces.length !== 1) {
+      return { valida: false, mensaje: 'Una vuelta requiere exactamente un partido por pareja de equipos.' }
+    }
+    if (formato === 'ida_vuelta' &&
+      (cruces.length !== 2 || cruces[0][0] !== cruces[1][1] || cruces[0][1] !== cruces[1][0])) {
+      return { valida: false, mensaje: 'Ida y vuelta requiere dos partidos por pareja, intercambiando local y visitante.' }
+    }
+  }
+  return {
+    valida: true, formato,
+    mensaje: `Fase regular verificada: ${partidos.length} partidos finalizados (${formato === 'una_vuelta' ? 'una vuelta' : 'ida y vuelta'}).`,
+  }
+}
+
 function crearRondas(tabla, cantidad) {
   const puesto = (numero) => {
     const equipo = tabla[numero - 1]
@@ -176,13 +222,15 @@ function crearBorradorSemifinales(preliminares, tabla, cantidad, fecha) {
   const esperados = cantidad === 8 ? 4 : cantidad === 6 ? 2 : 0
   if (!esperados || preliminares.length !== esperados) return []
   const ganadores = preliminares.map((p) => {
-    if (p.estado !== 'finalizado' || p.goles_local == null || p.goles_visitante == null) return null
-    const gl = Number(p.goles_local)
-    const gv = Number(p.goles_visitante)
-    // El ganador por penales o por mejor posición requiere un registro verificable.
-    // Mientras no esté implementado, no se inventa un ganador de un empate.
-    if (!Number.isInteger(gl) || !Number.isInteger(gv) || gl < 0 || gv < 0 || gl === gv) return null
-    return Number(gl > gv ? p.local_id : p.visitante_id)
+    const resultado = resolverResultadoEliminatoria(p)
+    if (resultado.estado === 'definido') return resultado.ganadorId
+    if (resultado.estado !== 'penales_pendientes') return null
+    // Regla vigente de cuartos/repechaje: si hay empate avanza el mejor clasificado.
+    // No aplicar esta regla a semifinales, final ni tercer lugar.
+    const puestoLocal = tabla.findIndex((e) => Number(e.id) === Number(p.local_id))
+    const puestoVisitante = tabla.findIndex((e) => Number(e.id) === Number(p.visitante_id))
+    if (puestoLocal < 0 || puestoVisitante < 0 || puestoLocal === puestoVisitante) return null
+    return Number(puestoLocal < puestoVisitante ? p.local_id : p.visitante_id)
   })
   if (ganadores.some((id) => !id)) return []
   const cruces = cantidad === 8
@@ -318,8 +366,8 @@ export default function AdminLiguillaPage() {
         const lista = resTemporadas.data || []
         setTemporadas(lista)
         setDivisiones(resDivisiones.data || [])
-        const prueba = lista.find((t) => Number(t.id) === TEMPORADA_PRUEBA)
-        setTemporadaId(String((prueba || lista[0])?.id || ''))
+        const oficial = lista.find((t) => Number(t.id) === TEMPORADA_OFICIAL)
+        setTemporadaId(String((oficial || lista[0])?.id || ''))
       } catch (err) {
         if (vigente) setError(err.message || 'No se pudo comprobar el acceso.')
       } finally {
@@ -336,12 +384,16 @@ export default function AdminLiguillaPage() {
 
   const divisionActual = divisiones.find((d) => Number(d.id) === Number(divisionId))
   const temporadaActual = temporadas.find((t) => Number(t.id) === Number(temporadaId))
-  const esTemporadaPrueba = Number(temporadaId) === TEMPORADA_PRUEBA &&
-    DIVISIONES_PRUEBA.includes(Number(divisionId)) &&
-    Number(divisionActual?.temporada_id) === TEMPORADA_PRUEBA &&
-    temporadaActual?.activa === false
+  const esTemporadaOficial = Number(temporadaId) === TEMPORADA_OFICIAL &&
+    DIVISIONES_OFICIALES.includes(Number(divisionId)) &&
+    Number(divisionActual?.temporada_id) === TEMPORADA_OFICIAL
 
-  useEffect(() => { setDivisionId('') }, [temporadaId])
+  // Abrir por defecto Segunda División 2026, donde ya terminó la fase regular.
+  useEffect(() => {
+    const preferida = Number(temporadaId) === TEMPORADA_OFICIAL
+      ? divisionesTorneo.find((d) => Number(d.id) === 2) : null
+    setDivisionId(String((preferida || divisionesTorneo[0])?.id || ''))
+  }, [temporadaId, divisionesTorneo])
 
 
   // Lectura solamente: nunca escribe en campeones, temporadas o partidos.
@@ -449,11 +501,8 @@ export default function AdminLiguillaPage() {
   const finalizados = partidos.filter((p) => p.estado === 'finalizado').length
   const pendientes = partidos.filter((p) => p.estado !== 'finalizado').length
   const rondas = crearRondas(tabla, cantidad)
-  const completa = partidos.length > 0 && pendientes === 0 && partidos.every((p) =>
-    p.goles_local != null && p.goles_visitante != null &&
-    Number.isInteger(Number(p.goles_local)) && Number.isInteger(Number(p.goles_visitante)) &&
-    Number(p.goles_local) >= 0 && Number(p.goles_visitante) >= 0
-  )
+  const validacionRegular = useMemo(() => validarFaseRegular(equipos, partidos), [equipos, partidos])
+  const completa = validacionRegular.valida
   const fechaPorJornada = useMemo(() => new Map(
     jornadas.map((j) => [Number(j.id), j.fecha])
   ), [jornadas])
@@ -467,7 +516,11 @@ export default function AdminLiguillaPage() {
   const nombreEquipo = (id) => equipos.find((e) => Number(e.id) === Number(id))?.nombre || `Equipo ${id}`
 
   async function prepararBorrador() {
-    if (!esTemporadaPrueba || !divisionId || cargando || cargandoCampos || cantidad === 0) return
+    if (!esTemporadaOficial || !divisionId || cargando || cargandoCampos || cantidad === 0) return
+    if (!validacionRegular.valida) {
+      setErrorBorrador(validacionRegular.mensaje)
+      return
+    }
     setErrorBorrador('')
     setMensajeGuardado('')
     setBorrador([])
@@ -527,9 +580,6 @@ export default function AdminLiguillaPage() {
           if (preliminares.some((p) => p.estado !== 'finalizado' ||
             p.goles_local == null || p.goles_visitante == null)) {
             throw new Error('Primero termina todos los partidos de cuartos o repechaje.')
-          }
-          if (preliminares.some((p) => Number(p.goles_local) === Number(p.goles_visitante))) {
-            throw new Error('Hay un empate en la ronda previa. Falta implementar y registrar el criterio de desempate antes de avanzar.')
           }
           const fechas = preliminares.map((p) => p.fecha || p.jornadas?.fecha).filter(Boolean).sort()
           if (fechas.length !== cantidadEsperada) throw new Error('Falta la fecha de un partido de la ronda previa.')
@@ -614,7 +664,7 @@ export default function AdminLiguillaPage() {
   }), [borrador, partidosOcupados])
 
   function asignarAutomaticamente() {
-    if (!esTemporadaPrueba || !mostrarBorrador || !borrador.length) return
+    if (!esTemporadaOficial || !mostrarBorrador || !borrador.length) return
     if (!disponibilidadLista) {
       setErrorBorrador('Espera a que termine la verificación de campos.')
       return
@@ -686,9 +736,9 @@ export default function AdminLiguillaPage() {
     const foto = fotosFinalistas.find((registro) =>
       Boolean(registro.foto_path) &&
       coincidePosicionFoto(registro.posicion, puesto.codigo) &&
-      coincideTemporadaFoto(registro.temporada, temporadaActual.nombre, esTemporadaPrueba) &&
+      coincideTemporadaFoto(registro.temporada, temporadaActual.nombre) &&
       normalizarEtiqueta(registro.division) === normalizarEtiqueta(divisionActual.nombre) &&
-      coincideEquipoFoto(registro.equipo, equipoPodio, esTemporadaPrueba)
+      coincideEquipoFoto(registro.equipo, equipoPodio)
     )
     const fotoUrl = foto
       ? supabase.storage.from('fotos-finalistas').getPublicUrl(foto.foto_path).data.publicUrl
@@ -723,17 +773,17 @@ export default function AdminLiguillaPage() {
       esDomingo(p.fecha) && convertirHoraAMinutos(p.hora) !== null &&
       camposDisponibles.some((c) => Number(c.id) === Number(p.campoId))
     )
-  // El RPC de Supabase valida un torneo ida-vuelta completo (N*(N-1) partidos).
-  const faseRegularValidada = temporadaActual?.formato === 'ida_vuelta' &&
-    tabla.length >= 4 && partidos.length === tabla.length * (tabla.length - 1) && completa
-  const listoParaGuardar = esTemporadaPrueba && faseRegularValidada &&
+  const faseRegularValidada = validacionRegular.valida
+  const listoParaConfirmar = esTemporadaOficial && faseRegularValidada &&
     !cargando && !cargandoCampos && !guardando && mostrarBorrador && tipoGuardable &&
     borradorValido && disponibilidadLista && conflictosBorrador.every((m) => !m)
+  // El navegador no habilita escrituras oficiales hasta instalar las RPC seguras.
+  const listoParaGuardar = GUARDADO_OFICIAL_HABILITADO && listoParaConfirmar
 
   async function guardarPartidosLiguilla() {
-    if (!listoParaGuardar || !esTemporadaPrueba ||
-      !DIVISIONES_PRUEBA.includes(Number(divisionId))) {
-      setErrorBorrador('No se cumplen las condiciones de seguridad para guardar.')
+    if (!GUARDADO_OFICIAL_HABILITADO || !listoParaGuardar || !esTemporadaOficial ||
+      !DIVISIONES_OFICIALES.includes(Number(divisionId))) {
+      setErrorBorrador('El guardado oficial está bloqueado hasta instalar y verificar las funciones SQL seguras en Supabase.')
       return
     }
     const esFinales = tipoBorrador === 'finales'
@@ -741,7 +791,7 @@ export default function AdminLiguillaPage() {
       tipoBorrador === 'preliminar' ?
         (cantidad === 8 ? 'los cuatro cuartos de final' : 'los dos partidos de repechaje') :
         'las dos semifinales'
-    if (!window.confirm(`¿Confirmas guardar ${descripcion} de PRUEBA YSASL 2027?\n\nRevisa que fechas, horarios y campos sean correctos.`)) return
+    if (!window.confirm(`¿Confirmas guardar ${descripcion} de ${temporadaActual?.nombre} — ${divisionActual?.nombre}?\n\nRevisa que fechas, horarios y campos sean correctos.`)) return
     setGuardando(true)
     setErrorBorrador('')
     try {
@@ -756,7 +806,7 @@ export default function AdminLiguillaPage() {
         hora: p.hora,
         campoId: Number(p.campoId),
       }))
-      const funcion = esFinales ? 'guardar_finales_liguilla_prueba' : 'guardar_liguilla_prueba'
+      const funcion = esFinales ? 'guardar_finales_liguilla_oficial' : 'guardar_liguilla_oficial'
       const { data, error: errorGuardar } = await supabase.rpc(funcion, {
         p_division_id: Number(divisionId),
         p_borrador: partidosParaGuardar,
@@ -782,8 +832,8 @@ export default function AdminLiguillaPage() {
         ← Volver a configurar torneo
       </button>
       <h1>Administrar liguilla</h1>
-      <p>Consulta las clasificaciones y cruces de cualquier temporada. <strong>El guardado está limitado a PRUEBA YSASL 2027.</strong></p>
-      <p><strong>Verano / Invierno 2026:</strong> únicamente vista previa. No se modifican sus partidos ni resultados.</p>
+      <p>Consulta las clasificaciones y prepara los cruces de la liguilla oficial de <strong>Verano / Invierno 2026</strong>.</p>
+      <p><strong>Etapa actual:</strong> puedes preparar y asignar campos y horarios. El guardado en Supabase permanece deshabilitado hasta instalar la validación oficial del servidor.</p>
 
       <div style={caja}>
         <label htmlFor="temporada"><strong>Temporada</strong></label><br />
@@ -811,8 +861,8 @@ export default function AdminLiguillaPage() {
           <p>Partidos: {finalizados} finalizados, {pendientes} pendientes.</p>
           {configuracion && Number(configuracion.equipos_clasifican) !== cantidad &&
             <p style={{ color: '#9a6700' }}>La configuración guardada indica {configuracion.equipos_clasifican} clasificados; la regla automática indica {cantidad}. No se ha cambiado la configuración.</p>}
-          {!completa && <p style={{ color: '#9a6700' }}><strong>Clasificación provisional.</strong> Termina todos los partidos regulares antes de guardar la liguilla.</p>}
-          {completa && <p><strong>La fase regular aparece completa.</strong></p>}
+          {!completa && <p style={{ color: '#9a6700' }}><strong>Fase regular pendiente de validar.</strong> {validacionRegular.mensaje}</p>}
+          {completa && <p><strong>{validacionRegular.mensaje}</strong></p>}
           <div style={{ overflowX: 'auto' }}>
             <table style={{ borderCollapse: 'collapse', width: '100%' }}>
               <thead><tr>{['#', 'Equipo', 'PJ', 'PG', 'PE', 'PP', 'GF', 'GC', 'DG', 'PTS'].map((x) =>
@@ -894,7 +944,7 @@ export default function AdminLiguillaPage() {
           </button>
           {mostrarPlan && <>
             <p><strong>Fechas tentativas:</strong> todavía no se han comprobado campos disponibles ni otros partidos.</p>
-            {!completa && <p style={{ color: '#9a6700' }}>Hay {pendientes} partidos regulares pendientes.</p>}
+            {!completa && <p style={{ color: '#9a6700' }}>{validacionRegular.mensaje}</p>}
             <div style={{ overflowX: 'auto' }}>
               <table style={{ borderCollapse: 'collapse', width: '100%' }}>
                 <thead><tr>{['Etapa', 'Fecha propuesta', 'Partidos', 'Horario'].map((titulo) =>
@@ -908,10 +958,10 @@ export default function AdminLiguillaPage() {
           </>}
         </div>}
 
-        {esTemporadaPrueba && cantidad > 0 && <div style={caja}>
-          <h2>Preparar partidos — PRUEBA YSASL 2027</h2>
-          <p>Se preparan cuartos o repechaje, después semifinales y por último final y tercer lugar. <strong>Nada se guarda hasta confirmar.</strong></p>
-          <button type="button" disabled={cargandoCampos || cargando || guardando} onClick={prepararBorrador}>
+        {esTemporadaOficial && cantidad > 0 && <div style={caja}>
+          <h2>Preparar partidos — {divisionActual?.nombre} 2026</h2>
+          <p>Se preparan cuartos o repechaje, después semifinales y por último final y tercer lugar. <strong>Este borrador no modifica los resultados oficiales.</strong></p>
+          <button type="button" disabled={!faseRegularValidada || cargandoCampos || cargando || guardando} onClick={prepararBorrador}>
             {cargandoCampos ? 'Consultando partidos...' : 'Preparar borrador de partidos'}
           </button>
           <button type="button" onClick={asignarAutomaticamente}
@@ -921,20 +971,23 @@ export default function AdminLiguillaPage() {
           </button>
           <button type="button" onClick={guardarPartidosLiguilla}
             disabled={!listoParaGuardar}
-            title={listoParaGuardar ? 'Revisar y confirmar guardado' : 'Se requieren resultados completos, campos disponibles y validaciones'}
+            title={GUARDADO_OFICIAL_HABILITADO ? 'Revisar y confirmar guardado' : 'Pendiente de instalar y verificar las funciones SQL oficiales en Supabase'}
             style={{ marginLeft: 10, padding: '8px 12px',
               opacity: listoParaGuardar ? 1 : 0.5,
               cursor: listoParaGuardar ? 'pointer' : 'not-allowed' }}>
             {guardando ? 'Guardando...' : 'Guardar partidos de liguilla'}
           </button>
-          {mostrarBorrador && <p style={{ color: listoParaGuardar ? '#166534' : '#b45309', fontWeight: 'bold' }}>
-            {listoParaGuardar
-              ? '✓ Partidos listos para revisar y confirmar.'
-              : '⚠ Guardado bloqueado: faltan resultados completos, horarios, campos o verificaciones.'}
+          {!GUARDADO_OFICIAL_HABILITADO && <p style={{ color: '#9a6700', fontWeight: 'bold' }}>
+            Guardado oficial pendiente: primero debemos instalar las funciones SQL seguras en Supabase.
+          </p>}
+          {mostrarBorrador && <p style={{ color: listoParaConfirmar ? '#166534' : '#b45309', fontWeight: 'bold' }}>
+            {listoParaConfirmar
+              ? '✓ Borrador revisado y sin conflictos. Falta habilitar el guardado oficial.'
+              : '⚠ Revisa resultados, horarios, campos y conflictos del borrador.'}
           </p>}
           {errorBorrador && <p style={{ color: '#b42318' }}>{errorBorrador}</p>}
           {mostrarBorrador && <>
-            {!completa && <p style={{ color: '#9a6700' }}><strong>Simulación provisional:</strong> todavía faltan resultados regulares.</p>}
+            {!completa && <p style={{ color: '#9a6700' }}><strong>Validación pendiente:</strong> {validacionRegular.mensaje}</p>}
             <p><strong>Etapa:</strong> {tipoBorrador === 'finales' ? 'Tercer lugar y final' : borrador[0]?.etapa}.</p>
             <div style={{ overflowX: 'auto' }}>
               <table style={{ borderCollapse: 'collapse', width: '100%' }}>
@@ -978,10 +1031,10 @@ export default function AdminLiguillaPage() {
               <p key={indice} style={{ color: '#b42318', fontWeight: 'bold' }}>
                 ⚠ Partido {indice + 1}: {mensaje}
               </p>)}
-            <p style={{ color: '#9a6700' }}><strong>Importante:</strong> Revisa fechas, horarios y campos antes de confirmar. Supabase volverá a validar el guardado.</p>
+            <p style={{ color: '#9a6700' }}><strong>Importante:</strong> estas verificaciones son preliminares. El servidor deberá volver a validar fechas, horarios, campos, permisos y partidos antes de guardar.</p>
           </>}
         </div>}
-        <p style={{ marginTop: 25 }}><strong>Protección:</strong> la temporada oficial 2026 permanece en modo consulta. Solo las divisiones de prueba 12 y 13 pueden usar el guardado.</p>
+        <p style={{ marginTop: 25 }}><strong>Protección:</strong> los partidos y resultados oficiales no se modifican desde esta pantalla hasta activar las funciones SQL oficiales verificadas.</p>
       </>}
     </main>
   )
