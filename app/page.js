@@ -2,7 +2,173 @@ import { supabase } from '../lib/supabase'
 
 export const dynamic = 'force-dynamic'
 
+// Campeones oficiales: se prioriza el resultado definitivo de una final
+// y se conserva el historial de fotografías guardadas en Supabase.
+function normalizar(texto) {
+  return String(texto || '').normalize('NFD')
+    .replace(/[\u0300-\u036f]/g, '').toLowerCase().trim()
+}
+
+function esPrueba(texto) {
+  return /prueba|simulaci[oó]n|test/i.test(String(texto || ''))
+}
+
+function tipoDivision(nombre) {
+  const nombreNormalizado = normalizar(nombre)
+  if (nombreNormalizado.includes('primera')) return 'primera'
+  if (nombreNormalizado.includes('segunda')) return 'segunda'
+  return null
+}
+
+function anioTemporada(nombre) {
+  const coincidencia = String(nombre || '').match(/20\d{2}/)
+  return coincidencia ? Number(coincidencia[0]) : 0
+}
+
+function resolverCampeonFinal(partido) {
+  if (!partido || partido.estado !== 'finalizado') return null
+  if (partido.goles_local == null || partido.goles_visitante == null) return null
+
+  const golesLocal = Number(partido.goles_local)
+  const golesVisitante = Number(partido.goles_visitante)
+  const localId = Number(partido.local_id)
+  const visitanteId = Number(partido.visitante_id)
+
+  if (![golesLocal, golesVisitante, localId, visitanteId].every(Number.isInteger)) return null
+  if (golesLocal < 0 || golesVisitante < 0 || localId <= 0 || visitanteId <= 0) return null
+  if (localId === visitanteId || golesLocal === golesVisitante) return null
+
+  return golesLocal > golesVisitante ? localId : visitanteId
+}
+
+async function cargarCampeonesVigentes() {
+  const vacios = [
+    { tipo: 'primera', division: 'Primera División', equipo: null },
+    { tipo: 'segunda', division: 'Segunda División', equipo: null }
+  ]
+
+  const [respuestaHistorial, respuestaTemporadas, respuestaDivisiones] = await Promise.all([
+    supabase.from('campeones')
+      .select('id,temporada,division,equipo,posicion,foto_path,created_at')
+      .order('created_at', { ascending: false }),
+    supabase.from('temporadas').select('id,nombre,activa'),
+    supabase.from('divisiones').select('id,nombre,temporada_id')
+  ])
+
+  // No afectamos el resto de la página si falta algún registro de campeones.
+  const historial = (respuestaHistorial.data || []).filter((registro) =>
+    (registro.posicion == null || normalizar(registro.posicion) === 'campeon') &&
+    !esPrueba(registro.temporada) &&
+    !esPrueba(registro.division) &&
+    !esPrueba(registro.equipo)
+  )
+
+  const temporadas = (respuestaTemporadas.data || []).filter((t) =>
+    Number(t.id) !== 9 && !esPrueba(t.nombre)
+  )
+  const temporadasPorId = new Map(temporadas.map((t) => [Number(t.id), t]))
+  const divisiones = (respuestaDivisiones.data || []).filter((d) =>
+    ![12, 13].includes(Number(d.id)) &&
+    temporadasPorId.has(Number(d.temporada_id)) &&
+    !esPrueba(d.nombre)
+  )
+
+  const candidatos = historial.map((registro) => {
+    const temporadaRegistrada = temporadas.find(
+      (t) => normalizar(t.nombre) === normalizar(registro.temporada)
+    )
+    return {
+      ...registro,
+      tipo: tipoDivision(registro.division),
+      temporadaId: Number(temporadaRegistrada?.id || 0),
+      automatico: false
+    }
+  })
+
+  // Igual que la página de Campeones: el ganador de una final finalizada
+  // prevalece sobre un registro manual de esa misma temporada/división.
+  if (!respuestaTemporadas.error && !respuestaDivisiones.error && divisiones.length > 0) {
+    try {
+      const idsDivisiones = divisiones.map((d) => Number(d.id))
+      const respuestaFinales = await supabase.from('partidos')
+        .select('id,local_id,visitante_id,goles_local,goles_visitante,estado,fase,jornadas!inner(division_id)')
+        .eq('fase', 'final')
+        .in('jornadas.division_id', idsDivisiones)
+
+      if (respuestaFinales.error) throw respuestaFinales.error
+      const finales = respuestaFinales.data || []
+      const idsEquipos = [...new Set(finales.flatMap((p) => [p.local_id, p.visitante_id])
+        .map(Number).filter((id) => Number.isInteger(id) && id > 0))]
+
+      const nombresPorId = new Map()
+      for (let i = 0; i < idsEquipos.length; i += 200) {
+        const respuestaEquipos = await supabase.from('equipos')
+          .select('id,nombre').in('id', idsEquipos.slice(i, i + 200))
+        if (respuestaEquipos.error) throw respuestaEquipos.error
+        for (const equipo of respuestaEquipos.data || []) {
+          nombresPorId.set(Number(equipo.id), equipo.nombre)
+        }
+      }
+
+      for (const division of divisiones) {
+        const finalesDivision = finales.filter(
+          (p) => Number(p.jornadas?.division_id) === Number(division.id)
+        )
+        // No deducir ganadores de finales duplicadas, incompletas o empatadas.
+        if (finalesDivision.length !== 1) continue
+        const ganadorId = resolverCampeonFinal(finalesDivision[0])
+        const equipo = nombresPorId.get(ganadorId)
+        if (!equipo) continue
+
+        const temporada = temporadasPorId.get(Number(division.temporada_id))
+        const foto = historial.find((r) =>
+          normalizar(r.temporada) === normalizar(temporada?.nombre) &&
+          normalizar(r.division) === normalizar(division.nombre) &&
+          normalizar(r.equipo) === normalizar(equipo)
+        )
+
+        candidatos.push({
+          id: `final-${division.id}`,
+          tipo: tipoDivision(division.nombre),
+          division: division.nombre,
+          temporada: temporada?.nombre || '',
+          temporadaId: Number(temporada?.id || 0),
+          equipo,
+          foto_path: foto?.foto_path || null,
+          automatico: true,
+          created_at: null
+        })
+      }
+    } catch (error) {
+      // Si fallan las consultas de finales, mantenemos los campeones históricos.
+      console.error('No se pudieron consultar las finales para la portada:', error.message)
+    }
+  }
+
+  const ordenados = candidatos.filter((c) => c.tipo).sort((a, b) => {
+    const diferenciaAnio = anioTemporada(b.temporada) - anioTemporada(a.temporada)
+    if (diferenciaAnio) return diferenciaAnio
+    const diferenciaTemporada = b.temporadaId - a.temporadaId
+    if (diferenciaTemporada) return diferenciaTemporada
+    if (a.automatico !== b.automatico) return a.automatico ? -1 : 1
+    return String(b.created_at || '').localeCompare(String(a.created_at || ''))
+  })
+
+  return vacios.map((division) =>
+    ordenados.find((c) => c.tipo === division.tipo) || division
+  )
+}
+
+function urlFotoCampeon(fotoPath) {
+  if (!fotoPath) return null
+  if (/^https?:\/\//i.test(fotoPath)) return fotoPath
+  return supabase.storage.from('fotos-finalistas').getPublicUrl(fotoPath).data.publicUrl
+}
+
+
 export default async function Home() {
+  const campeonesVigentes = await cargarCampeonesVigentes()
+
   const { data: divisiones, error: errorDivisiones } = await supabase
     .from('divisiones')
     .select('id, nombre')
@@ -60,6 +226,70 @@ export default async function Home() {
       <h1>Yuba Sutter Adult Soccer League</h1>
       <h2>YSASL</h2>
       <p>Sitio oficial de la liga.</p>
+
+      <section style={{ marginTop: '35px', marginBottom: '45px' }}>
+        <h2 style={{ marginBottom: '8px' }}>🏆 Campeones vigentes</h2>
+        <p style={{ color: '#555', marginTop: 0 }}>
+          Los últimos campeones oficiales registrados de cada división.
+        </p>
+
+        <div style={{
+          display: 'grid',
+          gridTemplateColumns: 'repeat(auto-fit, minmax(260px, 1fr))',
+          gap: '20px',
+          marginTop: '22px'
+        }}>
+          {campeonesVigentes.map((campeon) => {
+            const fotoUrl = urlFotoCampeon(campeon.foto_path)
+            return (
+              <article key={campeon.tipo} style={{
+                border: '1px solid #ddd',
+                borderRadius: '14px',
+                overflow: 'hidden',
+                background: '#fff',
+                textAlign: 'center',
+                boxShadow: '0 3px 10px rgba(0,0,0,0.06)'
+              }}>
+                <div style={{ padding: '18px 15px 8px' }}>
+                  <h3 style={{ margin: 0 }}>{campeon.division}</h3>
+                </div>
+                {fotoUrl ? (
+                  <img
+                    src={fotoUrl}
+                    alt={`Fotografía de ${campeon.equipo}`}
+                    style={{ width: '100%', height: '220px', objectFit: 'contain' }}
+                  />
+                ) : (
+                  <div style={{
+                    height: '190px',
+                    display: 'grid',
+                    placeItems: 'center',
+                    background: '#f3f4f6',
+                    fontSize: '52px'
+                  }}>🏆</div>
+                )}
+                <div style={{ padding: '12px 16px 22px' }}>
+                  <p style={{ fontSize: '20px', fontWeight: 'bold', margin: '4px 0' }}>
+                    {campeon.equipo || 'Campeón por definir'}
+                  </p>
+                  {campeon.temporada && (
+                    <p style={{ color: '#555', margin: '8px 0 0' }}>
+                      {campeon.temporada}
+                    </p>
+                  )}
+                </div>
+              </article>
+            )
+          })}
+        </div>
+
+        <p style={{ textAlign: 'center', marginTop: '20px' }}>
+          <a href="/campeones" style={{ color: '#0b4a84', fontWeight: 'bold' }}>
+            Ver todos los campeones y el historial →
+          </a>
+        </p>
+      </section>
+
 
       {hayError && (
         <div
@@ -269,7 +499,7 @@ justifyContent: 'center',
         </section>
       )}
 
-        {normales.length > 0 && (
+        {normales?.length > 0 && (
   <section style={{ marginTop: '50px' }}>
     <h2 style={{ textAlign: 'center', marginBottom: '25px' }}>
       Patrocinadores
@@ -312,7 +542,7 @@ justifyContent: 'center',
     </div>
   </section>
 )}
-  {destacados && destacados.length > 0 && (
+  {destacados?.length > 0 && (
   <section
     style={{
       marginTop: '50px',
