@@ -83,7 +83,37 @@ function agruparPorJornada(partidos, orden = 'ascendente') {
   )
 }
 
-function TablaJornada({ partidos }) {
+function normalizarNombre(texto) {
+  return String(texto || '').normalize('NFD')
+    .replace(/[\u0300-\u036f]/g, '').toLowerCase().trim()
+}
+
+function EscudoEquipo({ nombre, divisionId, escudos }) {
+  const equipo = escudos.find((e) =>
+    normalizarNombre(e.nombre) === normalizarNombre(nombre) &&
+    String(e.division_id) === String(divisionId)
+  )
+  const ruta = equipo?.escudo_url || equipo?.logo_url || equipo?.escudo_path || null
+  const url = ruta && /^https?:\/\//i.test(ruta)
+    ? ruta
+    : ruta ? supabase.storage.from('escudos-equipos').getPublicUrl(ruta).data.publicUrl : null
+
+  return (
+    <span style={{ display: 'inline-flex', alignItems: 'center', gap: '8px', minWidth: 0 }}>
+      {url ? (
+        <img src={url} alt={`Escudo de ${nombre}`} loading="lazy"
+          onError={(e) => { e.currentTarget.style.display = 'none' }}
+          style={{ width: 34, height: 34, objectFit: 'contain', flexShrink: 0 }} />
+      ) : (
+        <span aria-hidden="true" style={{ width: 34, height: 34, borderRadius: '50%',
+          background: '#e2e8f0', display: 'grid', placeItems: 'center', flexShrink: 0 }}>⚽</span>
+      )}
+      <span>{nombre}</span>
+    </span>
+  )
+}
+
+function TablaJornada({ partidos, escudos }) {
   return (
     <div style={{ overflowX: 'auto' }}>
       <table style={{ width: '100%', borderCollapse: 'collapse' }}>
@@ -120,9 +150,9 @@ function TablaJornada({ partidos }) {
                 <td style={celda}>
                   {partido.campo ? `Campo ${partido.campo}` : 'Pendiente'}
                 </td>
-                <td style={celda}>{partido.local}</td>
+                <td style={{ ...celda, textAlign: 'left' }}><EscudoEquipo nombre={partido.local} divisionId={partido.division_id} escudos={escudos} /></td>
                 <td style={celda}><strong>{resultado}</strong></td>
-                <td style={celda}>{partido.visitante}</td>
+                <td style={{ ...celda, textAlign: 'left' }}><EscudoEquipo nombre={partido.visitante} divisionId={partido.division_id} escudos={escudos} /></td>
                 <td style={celda}>{estado}</td>
               </tr>
             )
@@ -133,7 +163,7 @@ function TablaJornada({ partidos }) {
   )
 }
 
-function SeccionJornadas({ titulo, descripcion, partidos, orden }) {
+function SeccionJornadas({ titulo, descripcion, partidos, orden, escudos }) {
   if (partidos.length === 0) return null
   const grupos = agruparPorJornada(partidos, orden)
 
@@ -144,7 +174,7 @@ function SeccionJornadas({ titulo, descripcion, partidos, orden }) {
       {grupos.map((grupo) => (
         <div key={String(grupo.jornada)} style={{ marginBottom: '32px' }}>
           <h3>Jornada {grupo.jornada}</h3>
-          <TablaJornada partidos={grupo.juegos} />
+          <TablaJornada partidos={grupo.juegos} escudos={escudos} />
         </div>
       ))}
     </section>
@@ -155,6 +185,7 @@ export default function Calendario() {
   const [temporadas, setTemporadas] = useState([])
   const [divisiones, setDivisiones] = useState([])
   const [partidos, setPartidos] = useState([])
+  const [escudos, setEscudos] = useState([])
   const [temporadaId, setTemporadaId] = useState('')
   const [divisionId, setDivisionId] = useState('')
   const [cargando, setCargando] = useState(true)
@@ -202,6 +233,12 @@ export default function Calendario() {
           if (lote.length < 500) break
         }
 
+        // Los escudos son opcionales: si falla su consulta, el calendario sigue funcionando.
+        const respuestaEscudos = await supabase.from('equipos').select('*')
+        if (respuestaEscudos.error) {
+          console.error('No se pudieron cargar los escudos:', respuestaEscudos.error.message)
+        }
+
         const conPartidos = (t) => divisionesOficiales.some((d) =>
           Number(d.temporada_id) === Number(t.id) &&
           partidosCargados.some((p) => Number(p.division_id) === Number(d.id))
@@ -227,6 +264,7 @@ export default function Calendario() {
           setTemporadas(temporadasOficiales)
           setDivisiones(divisionesOficiales)
           setPartidos(partidosCargados)
+          setEscudos(respuestaEscudos.data || [])
           setTemporadaId(temporadaInicial ? String(temporadaInicial.id) : '')
           setDivisionId(divisionInicial ? String(divisionInicial.id) : '')
         }
@@ -327,18 +365,21 @@ export default function Calendario() {
                 descripcion="Partidos programados a partir de hoy, en orden de fecha y hora."
                 partidos={proximos}
                 orden="ascendente"
+                escudos={escudos}
               />
               <SeccionJornadas
                 titulo="Resultados anteriores"
                 descripcion="Primero las jornadas más recientes."
                 partidos={resultados}
                 orden="descendente"
+                escudos={escudos}
               />
               <SeccionJornadas
                 titulo="Otros partidos"
                 descripcion="Partidos pendientes de actualización, sin fecha, pospuestos o cancelados."
                 partidos={otros}
                 orden="descendente"
+                escudos={escudos}
               />
 
               {partidosDivision.length === 0 && (
