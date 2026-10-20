@@ -15,6 +15,7 @@ export default function LoginPage() {
 
   async function iniciarSesion(e) {
     e.preventDefault()
+    if (cargando) return
 
     setCargando(true)
     setMensaje('')
@@ -26,27 +27,22 @@ export default function LoginPage() {
           password
         })
 
-      if (error || !data?.user) {
+      if (error || !data.user) {
         setMensaje('Correo o contraseña incorrectos.')
         return
       }
 
-      const usuario = data.user
+      const usuarioId = data.user.id
 
       // Verificar si es administrador
       const { data: perfil, error: errorPerfil } =
         await supabase
           .from('perfiles')
           .select('rol')
-          .eq('id', usuario.id)
+          .eq('id', usuarioId)
           .maybeSingle()
 
-      if (errorPerfil) {
-        throw new Error(
-          'No se pudo verificar tu perfil: ' +
-          errorPerfil.message
-        )
-      }
+      if (errorPerfil) throw errorPerfil
 
       if (perfil?.rol === 'admin') {
         router.replace('/admin')
@@ -54,49 +50,34 @@ export default function LoginPage() {
         return
       }
 
-      // Verificar si es delegado activo
+      // Verificar si tiene equipos asignados
       const { data: delegados, error: errorDelegados } =
         await supabase
           .from('delegados_equipo')
           .select('id')
-          .eq('usuario_id', usuario.id)
+          .eq('usuario_id', usuarioId)
           .eq('activo', true)
           .limit(1)
 
-      if (errorDelegados) {
-        throw new Error(
-          'No se pudieron verificar tus permisos: ' +
-          errorDelegados.message
-        )
-      }
+      if (errorDelegados) throw errorDelegados
 
       if (delegados && delegados.length > 0) {
         router.replace('/delegado')
-        router.refresh()
-        return
+      } else {
+        router.replace('/jugador')
       }
 
-      // Usuario normal: panel de jugador
-      router.replace('/jugador')
       router.refresh()
 
     } catch (err) {
+      console.error('Error verificando acceso:', err)
       setMensaje(
-        err.message || 'No se pudo verificar el acceso.'
+        'No se pudo verificar tu tipo de usuario. ' +
+        'Contacta al administrador.'
       )
     } finally {
       setCargando(false)
     }
-  }
-
-  const estiloInput = {
-    width: '100%',
-    padding: '12px',
-    marginTop: '6px',
-    marginBottom: '20px',
-    boxSizing: 'border-box',
-    border: '1px solid #ccc',
-    borderRadius: '6px'
   }
 
   return (
@@ -111,10 +92,8 @@ export default function LoginPage() {
         Acceso YSASL
       </h1>
 
-      <p>Yuba Sutter Adult Soccer League</p>
-
       <p>
-        Inicia sesión para acceder a tu cuenta.
+        Administradores, delegados y jugadores
       </p>
 
       <form onSubmit={iniciarSesion}>
@@ -125,7 +104,13 @@ export default function LoginPage() {
           value={email}
           onChange={e => setEmail(e.target.value)}
           required
-          style={estiloInput}
+          style={{
+            width: '100%',
+            padding: '12px',
+            marginTop: '6px',
+            marginBottom: '20px',
+            boxSizing: 'border-box'
+          }}
         />
 
         <label>Contraseña</label>
@@ -135,7 +120,13 @@ export default function LoginPage() {
           value={password}
           onChange={e => setPassword(e.target.value)}
           required
-          style={estiloInput}
+          style={{
+            width: '100%',
+            padding: '12px',
+            marginTop: '6px',
+            marginBottom: '20px',
+            boxSizing: 'border-box'
+          }}
         />
 
         <button
@@ -152,20 +143,25 @@ export default function LoginPage() {
             cursor: 'pointer'
           }}
         >
-          {cargando
-            ? 'Verificando acceso...'
-            : 'Iniciar sesión'}
+          {cargando ? 'Ingresando...' : 'Iniciar sesión'}
         </button>
 
         {mensaje && (
           <p role="alert" style={{
             marginTop: '20px',
-            color: '#b91c1c'
+            color: 'red'
           }}>
             {mensaje}
           </p>
         )}
       </form>
+
+      <p style={{ marginTop: '25px' }}>
+        ¿No tienes cuenta?{' '}
+        <a href="/registro">
+          Regístrate aquí
+        </a>
+      </p>
     </main>
   )
 }
