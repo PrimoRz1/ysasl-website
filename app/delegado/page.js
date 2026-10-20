@@ -1,168 +1,294 @@
 
 'use client'
 
-import { useState } from 'react'
+import { useEffect, useState } from 'react'
 import { useRouter } from 'next/navigation'
 import { supabase } from '../../lib/supabase'
 
-export default function LoginPage() {
+export default function DelegadoPage() {
   const router = useRouter()
 
-  const [email, setEmail] = useState('')
-  const [password, setPassword] = useState('')
+  const [equipos, setEquipos] = useState([])
+  const [equipoId, setEquipoId] = useState('')
+  const [solicitudes, setSolicitudes] = useState([])
+  const [cargando, setCargando] = useState(true)
+  const [cargandoSolicitudes, setCargandoSolicitudes] = useState(false)
+  const [procesando, setProcesando] = useState(null)
   const [mensaje, setMensaje] = useState('')
-  const [cargando, setCargando] = useState(false)
+  const [error, setError] = useState('')
 
-  async function iniciarSesion(e) {
-    e.preventDefault()
-    if (cargando) return
+  useEffect(() => {
+    let activo = true
 
-    setCargando(true)
+    async function verificarDelegado() {
+      try {
+        const { data, error: errorAuth } =
+          await supabase.auth.getUser()
+
+        if (errorAuth || !data.user) {
+          router.replace('/login')
+          return
+        }
+
+        const { data: permisos, error: errorPermisos } =
+          await supabase
+            .from('delegados_equipo')
+            .select('equipo_id, tipo, equipos(nombre)')
+            .eq('usuario_id', data.user.id)
+            .eq('activo', true)
+
+        if (errorPermisos) throw errorPermisos
+        if (!activo) return
+
+        const lista = permisos || []
+        setEquipos(lista)
+
+        if (lista.length > 0) {
+          setEquipoId(String(lista[0].equipo_id))
+        }
+      } catch (err) {
+        if (activo) {
+          setError(err.message || 'Error verificando permisos.')
+        }
+      } finally {
+        if (activo) setCargando(false)
+      }
+    }
+
+    verificarDelegado()
+
+    return () => {
+      activo = false
+    }
+  }, [router])
+
+  useEffect(() => {
+    if (!equipoId) return
+
+    let activo = true
+
+    async function cargarSolicitudes() {
+      setCargandoSolicitudes(true)
+      setError('')
+      setMensaje('')
+
+      const { data, error: errorConsulta } =
+        await supabase
+          .from('solicitudes_jugadores')
+          .select('id, nombre, numero, estado, created_at')
+          .eq('equipo_id', Number(equipoId))
+          .eq('estado', 'pendiente')
+          .order('created_at', { ascending: true })
+
+      if (!activo) return
+
+      if (errorConsulta) {
+        setError(errorConsulta.message)
+      } else {
+        setSolicitudes(data || [])
+      }
+
+      setCargandoSolicitudes(false)
+    }
+
+    cargarSolicitudes()
+
+    return () => {
+      activo = false
+    }
+  }, [equipoId])
+
+  async function resolverSolicitud(id, aprobar) {
+    if (procesando !== null) return
+
+    setProcesando(id)
     setMensaje('')
+    setError('')
 
     try {
-      const { data, error: errorLogin } =
-        await supabase.auth.signInWithPassword({
-          email: email.trim(),
-          password
-        })
+      const { error: errorRPC } = await supabase.rpc(
+        'resolver_solicitud_jugador',
+        {
+          p_solicitud_id: id,
+          p_aprobar: aprobar
+        }
+      )
 
-      if (errorLogin || !data?.user) {
-        setMensaje(
-          'No se pudo iniciar sesión. Verifica tus datos y confirma tu correo.'
-        )
-        return
-      }
+      if (errorRPC) throw errorRPC
 
-      const usuario = data.user
+      setSolicitudes(actuales =>
+        actuales.filter(s => s.id !== id)
+      )
 
-      // 1. Verificar administrador
-      const { data: perfil, error: errorPerfil } =
-        await supabase
-          .from('perfiles')
-          .select('rol')
-          .eq('id', usuario.id)
-          .maybeSingle()
-
-      if (errorPerfil) throw errorPerfil
-
-      if (perfil?.rol === 'admin') {
-        router.replace('/admin')
-        router.refresh()
-        return
-      }
-
-      // 2. Verificar delegado activo
-      const { data: delegado, error: errorDelegado } =
-        await supabase
-          .from('delegados_equipo')
-          .select('equipo_id')
-          .eq('usuario_id', usuario.id)
-          .eq('activo', true)
-          .limit(1)
-          .maybeSingle()
-
-      if (errorDelegado) throw errorDelegado
-
-      if (delegado) {
-        router.replace('/delegado')
-        router.refresh()
-        return
-      }
-
-      // 3. Los demás usuarios entran al panel de jugador
-      router.replace('/jugador')
-      router.refresh()
-
-    } catch (err) {
-      console.error('Error verificando acceso:', err)
       setMensaje(
-        'No se pudieron verificar los permisos. Intenta nuevamente.'
+        aprobar
+          ? 'Jugador aprobado e incorporado al equipo.'
+          : 'Solicitud rechazada correctamente.'
+      )
+    } catch (err) {
+      setError(
+        'No se pudo procesar la solicitud: ' + err.message
       )
     } finally {
-      setCargando(false)
+      setProcesando(null)
     }
   }
 
+  async function cerrarSesion() {
+    const { error: errorSalida } =
+      await supabase.auth.signOut()
+
+    if (errorSalida) {
+      setError(errorSalida.message)
+      return
+    }
+
+    router.replace('/login')
+    router.refresh()
+  }
+
+  if (cargando) {
+    return (
+      <main style={{ padding: 30 }}>
+        Verificando acceso...
+      </main>
+    )
+  }
+
   return (
-    <main
-      style={{
-        maxWidth: '420px',
-        margin: '70px auto',
-        padding: '30px',
-        border: '1px solid #ddd',
-        borderRadius: '12px'
-      }}
-    >
-      <h1>Acceso YSASL</h1>
+    <main style={{
+      maxWidth: '850px',
+      margin: '40px auto',
+      padding: '20px'
+    }}>
+      <h1>Panel de Delegados</h1>
+      <p>Yuba Sutter Adult Soccer League</p>
 
-      <p>
-        Yuba Sutter Adult Soccer League
-      </p>
+      <button onClick={cerrarSesion}>
+        Cerrar sesión
+      </button>
 
-      <p>
-        Inicia sesión para acceder a tu cuenta.
-      </p>
+      <hr style={{ margin: '30px 0' }} />
 
-      <form onSubmit={iniciarSesion}>
-        <label>Correo electrónico</label>
+      <h2>Mis equipos</h2>
 
-        <input
-          type="email"
-          value={email}
-          onChange={e => setEmail(e.target.value)}
-          required
-          style={{
-            width: '100%',
-            padding: '12px',
-            marginTop: '6px',
-            marginBottom: '20px',
-            boxSizing: 'border-box'
-          }}
-        />
+      {equipos.length === 0 ? (
+        <p>
+          No tienes equipos asignados actualmente.
+          Contacta al administrador de YSASL.
+        </p>
+      ) : (
+        <>
+          <label htmlFor="equipo-delegado">
+            Seleccionar equipo
+          </label>
 
-        <label>Contraseña</label>
+          <select
+            id="equipo-delegado"
+            value={equipoId}
+            onChange={e => setEquipoId(e.target.value)}
+            disabled={procesando !== null}
+            style={{
+              display: 'block',
+              width: '100%',
+              padding: '12px',
+              marginTop: '10px',
+              marginBottom: '30px'
+            }}
+          >
+            {equipos.map(equipo => (
+              <option
+                key={equipo.equipo_id}
+                value={equipo.equipo_id}
+              >
+                {equipo.equipos?.nombre ||
+                  `Equipo #${equipo.equipo_id}`}
+              </option>
+            ))}
+          </select>
 
-        <input
-          type="password"
-          value={password}
-          onChange={e => setPassword(e.target.value)}
-          required
-          style={{
-            width: '100%',
-            padding: '12px',
-            marginTop: '6px',
-            marginBottom: '20px',
-            boxSizing: 'border-box'
-          }}
-        />
+          <h2>Solicitudes pendientes</h2>
 
-        <button
-          type="submit"
-          disabled={cargando}
-          style={{
-            width: '100%',
-            padding: '13px',
-            background: '#0b2948',
-            color: 'white',
-            border: 'none',
-            borderRadius: '6px',
-            fontWeight: 'bold',
-            cursor: 'pointer'
-          }}
-        >
-          {cargando ? 'Verificando acceso...' : 'Iniciar sesión'}
-        </button>
+          {cargandoSolicitudes ? (
+            <p>Cargando solicitudes...</p>
+          ) : solicitudes.length === 0 ? (
+            <p>No hay solicitudes pendientes.</p>
+          ) : (
+            solicitudes.map(solicitud => (
+              <div
+                key={solicitud.id}
+                style={{
+                  border: '1px solid #ddd',
+                  borderRadius: '10px',
+                  padding: '20px',
+                  marginBottom: '15px'
+                }}
+              >
+                <h3>{solicitud.nombre}</h3>
 
-        {mensaje && (
-          <p role="alert" style={{
-            color: '#b91c1c',
-            marginTop: '20px'
-          }}>
-            {mensaje}
-          </p>
-        )}
-      </form>
+                <p>
+                  Número de camiseta:{' '}
+                  {solicitud.numero ?? 'Sin número'}
+                </p>
+
+                <p>
+                  Estado: {solicitud.estado}
+                </p>
+
+                <div style={{
+                  display: 'flex',
+                  gap: '12px',
+                  flexWrap: 'wrap'
+                }}>
+                  <button
+                    disabled={procesando !== null}
+                    onClick={() =>
+                      resolverSolicitud(solicitud.id, true)
+                    }
+                    style={{
+                      padding: '12px 20px',
+                      background: '#16803c',
+                      color: 'white',
+                      border: 'none',
+                      borderRadius: '6px'
+                    }}
+                  >
+                    Aprobar
+                  </button>
+
+                  <button
+                    disabled={procesando !== null}
+                    onClick={() =>
+                      resolverSolicitud(solicitud.id, false)
+                    }
+                    style={{
+                      padding: '12px 20px',
+                      background: '#b91c1c',
+                      color: 'white',
+                      border: 'none',
+                      borderRadius: '6px'
+                    }}
+                  >
+                    Rechazar
+                  </button>
+                </div>
+              </div>
+            ))
+          )}
+        </>
+      )}
+
+      {mensaje && (
+        <p role="status" style={{ color: 'green' }}>
+          {mensaje}
+        </p>
+      )}
+
+      {error && (
+        <p role="alert" style={{ color: 'red' }}>
+          {error}
+        </p>
+      )}
     </main>
   )
 }
