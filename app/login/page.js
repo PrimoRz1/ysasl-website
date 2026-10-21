@@ -110,41 +110,9 @@ function LoginContenido() {
         return
       }
 
-      const usuarioId = data.user.id
-
-      // Conservar el acceso de los administradores.
-      const { data: perfil, error: errorPerfil } =
-        await supabase
-          .from('perfiles')
-          .select('rol')
-          .eq('id', usuarioId)
-          .maybeSingle()
-
-      if (errorPerfil) throw errorPerfil
-
-      if (perfil?.rol === 'admin') {
-        router.replace('/admin')
-        router.refresh()
-        return
-      }
-
-      // Conservar el acceso de los delegados y jugadores.
-      const { data: delegados, error: errorDelegados } =
-        await supabase
-          .from('delegados_equipo')
-          .select('id')
-          .eq('usuario_id', usuarioId)
-          .eq('activo', true)
-          .limit(1)
-
-      if (errorDelegados) throw errorDelegados
-
-      if (delegados && delegados.length > 0) {
-        router.replace('/delegado')
-      } else {
-        router.replace('/jugador')
-      }
-
+      // La selección verifica los permisos de esta misma cuenta.
+      // No se crean cuentas adicionales ni se concede ningún rol nuevo.
+      router.replace('/mis-paneles')
       router.refresh()
     } catch (err) {
       console.error('Error verificando acceso:', err)
