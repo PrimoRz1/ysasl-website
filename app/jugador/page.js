@@ -496,7 +496,10 @@ export default function JugadorPage() {
 
       <p>Bienvenido, {nombre || usuario?.email}</p>
 
-      <button onClick={cerrarSesion}>Cerrar sesión</button>
+      <div style={{ display: 'flex', gap: '12px', flexWrap: 'wrap' }}>
+        <button type="button" onClick={() => router.push('/mis-paneles')}>Cambiar de panel</button>
+        <button type="button" onClick={cerrarSesion}>Cerrar sesión</button>
+      </div>
 
       <hr style={{ margin: '30px 0' }} />
 
