@@ -25,6 +25,15 @@ export default function JugadorPage() {
   const [mensaje, setMensaje] = useState('')
   const [error, setError] = useState('')
 
+  // Perfil voluntario de jugador libre (no es parte de la plantilla).
+  const [perfilLibre, setPerfilLibre] = useState(null)
+  const [nombreLibre, setNombreLibre] = useState('')
+  const [posicionLibre, setPosicionLibre] = useState('')
+  const [cargandoLibre, setCargandoLibre] = useState(true)
+  const [guardandoLibre, setGuardandoLibre] = useState(false)
+  const [mensajeLibre, setMensajeLibre] = useState('')
+  const [errorLibre, setErrorLibre] = useState('')
+
   useEffect(() => {
     let activo = true
 
@@ -42,7 +51,7 @@ export default function JugadorPage() {
 
         const user = auth.user
 
-        const [respuestaEquipos, respuestaSolicitudes] =
+        const [respuestaEquipos, respuestaSolicitudes, respuestaLibre] =
           await Promise.all([
             supabase
               .from('equipos')
@@ -53,13 +62,30 @@ export default function JugadorPage() {
               .from('solicitudes_jugadores')
               .select('id, equipo_id, estado, created_at')
               .eq('usuario_id', user.id)
-              .order('created_at', { ascending: false })
+              .order('created_at', { ascending: false }),
+            supabase
+              .from('jugadores_libres')
+              .select('usuario_id, nombre, posicion, disponible')
+              .eq('usuario_id', user.id)
+              .maybeSingle()
           ])
 
         if (!activo) return
 
         setUsuario(user)
         setNombre(user.user_metadata?.nombre || '')
+
+        // Los errores del directorio no bloquean las solicitudes normales.
+        if (respuestaLibre.error) {
+          setErrorLibre('No se pudo cargar el perfil de jugador libre: ' +
+            respuestaLibre.error.message)
+          setNombreLibre(user.user_metadata?.nombre || '')
+        } else {
+          const libre = respuestaLibre.data || null
+          setPerfilLibre(libre)
+          setNombreLibre(libre?.nombre || user.user_metadata?.nombre || '')
+          setPosicionLibre(libre?.posicion || '')
+        }
 
         if (respuestaEquipos.error || respuestaSolicitudes.error) {
           setError(
@@ -182,7 +208,10 @@ export default function JugadorPage() {
           setError(err.message || 'No se pudo cargar el panel.')
         }
       } finally {
-        if (activo) setCargando(false)
+        if (activo) {
+          setCargando(false)
+          setCargandoLibre(false)
+        }
       }
     }
 
@@ -302,6 +331,69 @@ export default function JugadorPage() {
     }
   }
 
+  async function publicarJugadorLibre(e) {
+    e.preventDefault()
+    if (!usuario || guardandoLibre || cargandoLibre) return
+
+    setMensajeLibre('')
+    setErrorLibre('')
+
+    const nombreLimpio = nombreLibre.trim()
+    if (nombreLimpio.length < 2 || nombreLimpio.length > 120) {
+      setErrorLibre('Escribe tu nombre completo (entre 2 y 120 caracteres).')
+      return
+    }
+
+    setGuardandoLibre(true)
+    try {
+      const perfil = {
+        usuario_id: usuario.id,
+        nombre: nombreLimpio,
+        posicion: posicionLibre || null,
+        disponible: true
+      }
+      const { error: errorGuardar } = await supabase
+        .from('jugadores_libres')
+        .upsert(perfil, { onConflict: 'usuario_id' })
+
+      if (errorGuardar) throw errorGuardar
+      setPerfilLibre(perfil)
+      setMensajeLibre(
+        'Tu perfil de jugador libre está visible solo para delegados y administradores. '
+        + 'No te incorpora automáticamente a ningún equipo.'
+      )
+    } catch (err) {
+      setErrorLibre('No se pudo publicar el perfil: ' + err.message)
+    } finally {
+      setGuardandoLibre(false)
+    }
+  }
+
+  async function dejarDeSerLibre() {
+    if (!usuario || guardandoLibre || !perfilLibre?.disponible) return
+    setMensajeLibre('')
+    setErrorLibre('')
+    setGuardandoLibre(true)
+    try {
+      const { data, error: errorGuardar } = await supabase
+        .from('jugadores_libres')
+        .update({ disponible: false })
+        .eq('usuario_id', usuario.id)
+        .select('usuario_id')
+
+      if (errorGuardar) throw errorGuardar
+      if (!data || data.length !== 1) {
+        throw new Error('No se pudo confirmar el cambio de disponibilidad.')
+      }
+      setPerfilLibre(actual => ({ ...actual, disponible: false }))
+      setMensajeLibre('Ya no apareces en el directorio de jugadores libres.')
+    } catch (err) {
+      setErrorLibre('No se pudo cambiar tu disponibilidad: ' + err.message)
+    } finally {
+      setGuardandoLibre(false)
+    }
+  }
+
   async function cerrarSesion() {
     const { error: errorSalida } = await supabase.auth.signOut()
 
@@ -355,6 +447,105 @@ export default function JugadorPage() {
           <p>El delegado debe aprobarte antes de ingresar a la plantilla.</p>
         </div>
       )}
+
+      <section style={{
+        border: '1px solid #cbd5e1',
+        borderRadius: '10px',
+        padding: '20px',
+        marginBottom: '30px'
+      }}>
+        <h2 style={{ marginTop: 0 }}>Soy jugador libre</h2>
+        <p>
+          ¿Todavía no tienes equipo? Puedes aparecer voluntariamente en un
+          directorio privado que solo consultan los delegados autorizados
+          y administradores de YSASL. No mostraremos tu correo ni contraseña.
+        </p>
+        <p>
+          Registrarte como jugador libre no te agrega a ninguna plantilla.
+          Para ingresar a un equipo siempre necesitarás su aprobación.
+        </p>
+
+        {cargandoLibre ? (
+          <p>Cargando tu disponibilidad...</p>
+        ) : (
+          <form onSubmit={publicarJugadorLibre}>
+            <label htmlFor="nombre-libre">Nombre completo</label>
+            <input
+              id="nombre-libre"
+              value={nombreLibre}
+              onChange={e => setNombreLibre(e.target.value)}
+              required
+              maxLength={120}
+              style={inputStyle}
+            />
+
+            <label htmlFor="posicion-libre">Posición (opcional)</label>
+            <select
+              id="posicion-libre"
+              value={posicionLibre}
+              onChange={e => setPosicionLibre(e.target.value)}
+              style={inputStyle}
+            >
+              <option value="">Sin preferencia</option>
+              <option value="Portero">Portero</option>
+              <option value="Defensa">Defensa</option>
+              <option value="Mediocampista">Mediocampista</option>
+              <option value="Delantero">Delantero</option>
+            </select>
+
+            {perfilLibre?.disponible && (
+              <p style={{ color: '#166534', fontWeight: 'bold' }}>
+                Estás disponible en el directorio privado de jugadores libres.
+              </p>
+            )}
+
+            <div style={{ display: 'flex', gap: '10px', flexWrap: 'wrap' }}>
+              <button
+                type="submit"
+                disabled={guardandoLibre}
+                style={{
+                  background: '#0b2948',
+                  color: 'white',
+                  padding: '12px 16px',
+                  border: 'none',
+                  borderRadius: '6px',
+                  cursor: guardandoLibre ? 'wait' : 'pointer'
+                }}
+              >
+                {guardandoLibre
+                  ? 'Guardando...'
+                  : perfilLibre?.disponible
+                    ? 'Actualizar mi perfil'
+                    : 'Quiero aparecer como jugador libre'}
+              </button>
+              {perfilLibre?.disponible && (
+                <button
+                  type="button"
+                  onClick={dejarDeSerLibre}
+                  disabled={guardandoLibre}
+                  style={{
+                    background: '#f1f5f9',
+                    color: '#334155',
+                    padding: '12px 16px',
+                    border: '1px solid #cbd5e1',
+                    borderRadius: '6px',
+                    cursor: 'pointer'
+                  }}
+                >
+                  Dejar de aparecer
+                </button>
+              )}
+            </div>
+          </form>
+        )}
+
+        {mensajeLibre && (
+          <p role="status" style={{ color: '#166534' }}>{mensajeLibre}</p>
+        )}
+        {errorLibre && (
+          <p role="alert" style={{ color: '#b91c1c' }}>{errorLibre}</p>
+        )}
+      </section>
 
       <h2>Solicitar ingreso a un equipo</h2>
 
