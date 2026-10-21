@@ -11,6 +11,7 @@ export default function DelegadoPage() {
   const [solicitudes, setSolicitudes] = useState([])
   const [jugadores, setJugadores] = useState([])
   const [cargando, setCargando] = useState(true)
+  const [autorizado, setAutorizado] = useState(false)
   const [cargandoDatos, setCargandoDatos] = useState(false)
   const [procesando, setProcesando] = useState(null)
   const [mensaje, setMensaje] = useState('')
@@ -30,30 +31,55 @@ export default function DelegadoPage() {
 
   useEffect(() => {
     let activo = true
-    async function verificarDelegado() {
+
+    async function verificarAdministradorEquipo() {
       try {
         const { data, error: errorAuth } = await supabase.auth.getUser()
-        if (errorAuth || !data.user) {
-          router.replace('/login')
+        if (!activo) return
+        if (errorAuth) throw errorAuth
+        if (!data.user) {
+          router.replace('/login?tipo=equipo')
           return
         }
+
+        // La administración general utiliza su propio panel.
+        const { data: perfil, error: errorPerfil } = await supabase
+          .from('perfiles')
+          .select('rol')
+          .eq('id', data.user.id)
+          .maybeSingle()
+        if (!activo) return
+        if (errorPerfil) throw errorPerfil
+        if (perfil?.rol === 'admin') {
+          router.replace('/admin')
+          return
+        }
+
+        // Únicamente una asignación activa permite entrar a este panel.
         const { data: permisos, error: errorPermisos } = await supabase
           .from('delegados_equipo')
           .select('equipo_id, tipo, equipos(nombre)')
           .eq('usuario_id', data.user.id)
           .eq('activo', true)
-        if (errorPermisos) throw errorPermisos
         if (!activo) return
+        if (errorPermisos) throw errorPermisos
         const lista = permisos || []
+        if (lista.length === 0) {
+          router.replace('/jugador')
+          return
+        }
+
         setEquipos(lista)
-        if (lista.length > 0) setEquipoId(String(lista[0].equipo_id))
+        setEquipoId(String(lista[0].equipo_id))
+        setAutorizado(true)
       } catch (err) {
-        if (activo) setError(err.message || 'Error verificando permisos.')
+        if (activo) setError('No se pudo verificar tu acceso: ' + (err.message || 'Error desconocido.'))
       } finally {
         if (activo) setCargando(false)
       }
     }
-    verificarDelegado()
+
+    verificarAdministradorEquipo()
     return () => { activo = false }
   }, [router])
 
@@ -176,7 +202,7 @@ export default function DelegadoPage() {
     const texto = nombreJugador
       ? `Hola ${nombreJugador}, te invitamos a unirte a ${nombreEquipo} en YSASL.\n` +
         `Regístrate aquí: ${enlace}\n` +
-        'Tu solicitud deberá ser aprobada por el delegado antes de entrar al equipo.'
+        'Tu solicitud deberá ser aprobada por el administrador de equipo antes de entrar al equipo.'
       : enlace
 
     setError('')
@@ -301,9 +327,19 @@ export default function DelegadoPage() {
 
   if (cargando) return <main style={{ padding: 30 }}>Verificando acceso...</main>
 
+  // No mostrar el panel ni sus datos a usuarios sin asignación activa.
+  if (!autorizado) {
+    return (
+      <main style={{ maxWidth: '700px', margin: '50px auto', padding: '24px' }}>
+        <h1>Verificación de acceso</h1>
+        {error ? <p role="alert" style={{ color: '#b91c1c' }}>{error}</p> : <p>Redirigiendo al panel autorizado...</p>}
+      </main>
+    )
+  }
+
   return (
     <main style={{ maxWidth: '850px', margin: '40px auto', padding: '20px' }}>
-      <h1>Panel de Delegados</h1>
+      <h1>Panel de Administradores de Equipo</h1>
       <p>Yuba Sutter Adult Soccer League</p>
       <button type="button" onClick={cerrarSesion}>Cerrar sesión</button>
       <hr style={{ margin: '30px 0' }} />
@@ -344,7 +380,7 @@ export default function DelegadoPage() {
             <h3 style={{ marginTop: 0 }}>Invitar jugadores</h3>
             <p>
               Comparte el enlace de tu equipo. Cada jugador deberá registrarse
-              y solicitar ingreso; el delegado aprobará su solicitud antes de incorporarlo.
+              y solicitar ingreso; el administrador de equipo aprobará su solicitud antes de incorporarlo.
             </p>
             <button
               type="button"
