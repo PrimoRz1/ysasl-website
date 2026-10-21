@@ -1,4 +1,3 @@
-
 'use client'
 
 import { useEffect, useState } from 'react'
@@ -16,6 +15,7 @@ export default function DelegadoPage() {
   const [procesando, setProcesando] = useState(null)
   const [mensaje, setMensaje] = useState('')
   const [error, setError] = useState('')
+  const [enlaceManual, setEnlaceManual] = useState('')
 
   useEffect(() => {
     let activo = true
@@ -97,6 +97,29 @@ export default function DelegadoPage() {
       activo = false
     }
   }, [equipoId])
+
+  async function copiarInvitacion() {
+    if (!equipoId) return
+
+    const enlace =
+      `${window.location.origin}/registro?equipo=${encodeURIComponent(equipoId)}`
+
+    setError('')
+    setMensaje('')
+    setEnlaceManual('')
+
+    try {
+      if (!navigator.clipboard?.writeText) {
+        throw new Error('Portapapeles no disponible')
+      }
+
+      await navigator.clipboard.writeText(enlace)
+      setMensaje('Enlace copiado. Compártelo por WhatsApp, mensaje o correo.')
+    } catch {
+      setEnlaceManual(enlace)
+      setMensaje('No se pudo copiar automáticamente. Selecciona y copia el enlace que aparece abajo.')
+    }
+  }
 
   async function resolverSolicitud(id, aprobar) {
     if (procesando !== null) return
@@ -186,14 +209,17 @@ export default function DelegadoPage() {
           <select
             id="equipo-delegado"
             value={equipoId}
-            onChange={e => setEquipoId(e.target.value)}
+            onChange={e => {
+              setEquipoId(e.target.value)
+              setEnlaceManual('')
+            }}
             disabled={procesando !== null}
             style={{
               display: 'block',
               width: '100%',
               padding: '12px',
               marginTop: '10px',
-              marginBottom: '30px'
+              marginBottom: '20px'
             }}
           >
             {equipos.map(equipo => (
@@ -206,6 +232,57 @@ export default function DelegadoPage() {
               </option>
             ))}
           </select>
+
+          <div style={{
+            border: '1px solid #d5e2ee',
+            background: '#f5f9fd',
+            borderRadius: '10px',
+            padding: '18px',
+            marginBottom: '30px'
+          }}>
+            <h3 style={{ marginTop: 0 }}>Invitar jugadores</h3>
+            <p>
+              Comparte el enlace de tu equipo. Cada jugador deberá
+              registrarse y solicitar ingreso; el delegado aprobará
+              su solicitud antes de incorporarlo.
+            </p>
+            <button
+              type="button"
+              onClick={copiarInvitacion}
+              disabled={!equipoId}
+              style={{
+                padding: '12px 18px',
+                background: '#0b2948',
+                color: 'white',
+                border: 'none',
+                borderRadius: '6px',
+                cursor: 'pointer',
+                fontWeight: 'bold'
+              }}
+            >
+              Copiar invitación del equipo
+            </button>
+            {enlaceManual && (
+              <div style={{ marginTop: '12px' }}>
+                <label htmlFor="enlace-invitacion">
+                  Enlace para copiar
+                </label>
+                <input
+                  id="enlace-invitacion"
+                  readOnly
+                  value={enlaceManual}
+                  onFocus={e => e.target.select()}
+                  style={{
+                    display: 'block',
+                    width: '100%',
+                    padding: '10px',
+                    marginTop: '6px',
+                    boxSizing: 'border-box'
+                  }}
+                />
+              </div>
+            )}
+          </div>
 
           <h2>Solicitudes pendientes</h2>
 
