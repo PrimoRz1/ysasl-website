@@ -1,7 +1,7 @@
 'use client'
 
-import { useEffect, useState } from 'react'
-import { useRouter } from 'next/navigation'
+import { Suspense, useEffect, useState } from 'react'
+import { useRouter, useSearchParams } from 'next/navigation'
 import { supabase } from '../../lib/supabase'
 
 const estiloCampo = {
@@ -36,12 +36,23 @@ const estiloOpcion = {
 }
 
 export default function LoginPage() {
+  return (
+    <Suspense fallback={<main style={{ maxWidth: '420px', margin: '70px auto', padding: '30px' }}>Cargando acceso...</main>}>
+      <LoginContenido />
+    </Suspense>
+  )
+}
+
+function LoginContenido() {
   const router = useRouter()
+  const searchParams = useSearchParams()
+  // Se recalcula cada vez que cambia ?tipo=, sin refrescar el navegador.
+  const tipo = searchParams.get('tipo')
+  const tipoAcceso = ['jugador', 'equipo', 'admin'].includes(tipo) ? tipo : ''
 
   // 'login' = acceso normal; 'recuperar' = enviar correo;
   // 'nueva' = guardar una nueva contraseña después de abrir el enlace.
   const [modo, setModo] = useState('login')
-  const [tipoAcceso, setTipoAcceso] = useState('')
   const [email, setEmail] = useState('')
   const [password, setPassword] = useState('')
   const [nuevaPassword, setNuevaPassword] = useState('')
@@ -55,8 +66,6 @@ export default function LoginPage() {
     // El parámetro permite mostrar el formulario incluso si el evento
     // PASSWORD_RECOVERY ocurrió antes de montar este componente.
     const url = new URL(window.location.href)
-    const tipo = url.searchParams.get('tipo')
-    setTipoAcceso(['jugador', 'equipo', 'admin'].includes(tipo) ? tipo : '')
     if (
       url.searchParams.get('restablecer') === '1' ||
       url.hash.includes('type=recovery')
