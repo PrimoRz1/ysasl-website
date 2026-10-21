@@ -75,10 +75,10 @@ export default function RootLayout({ children }) {
               <span style={{ fontSize: '13px', opacity: 0.9, marginRight: '4px' }}>
                 Acceso a tu cuenta:
               </span>
-              <Link href="/jugador" style={accesoStyle}>
+              <Link href="/login?tipo=jugador" style={accesoStyle}>
                 ⚽ Jugadores
               </Link>
-              <Link href="/delegado" style={accesoStyle}>
+              <Link href="/login?tipo=equipo" style={accesoStyle}>
                 👥 Administradores de Equipo
               </Link>
             </div>
@@ -124,7 +124,7 @@ export default function RootLayout({ children }) {
         >
           <span>YSASL · Yuba Sutter Adult Soccer League</span>
           <Link
-            href="/admin"
+            href="/login?tipo=admin"
             style={{ color: '#6b7280', textDecoration: 'none', fontSize: '12px' }}
           >
             Administración General
