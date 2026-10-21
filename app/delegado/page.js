@@ -106,7 +106,7 @@ export default function DelegadoPage() {
       try {
         const { data, error: errorConsulta } = await supabase
           .from('jugadores_libres')
-          .select('usuario_id, nombre, posicion')
+          .select('usuario_id, nombre, posicion, historia')
           .eq('disponible', true)
           .order('nombre', { ascending: true })
 
@@ -329,7 +329,7 @@ export default function DelegadoPage() {
             </h2>
             <p>
               Directorio privado de jugadores que decidieron aparecer como disponibles.
-              Solo muestra nombre y posición; no incluye correos ni contraseñas.
+              Muestra nombre, posición e historia futbolística escrita por el propio jugador. No incluye correos ni contraseñas.
             </p>
             <p style={{ color: '#555', fontSize: '14px' }}>
               Para invitar a alguien, copia el mensaje y compártelo personalmente.
@@ -402,6 +402,15 @@ export default function DelegadoPage() {
                       <div style={{ fontSize: '13px', color: '#555', marginTop: '4px' }}>
                         Posición: {jugadorLibre.posicion || 'Sin preferencia'}
                       </div>
+                      {jugadorLibre.historia && (
+                        <div style={{ marginTop: '10px', maxWidth: '540px' }}>
+                          <strong style={{ fontSize: '13px' }}>Mi historia futbolística</strong>
+                          <p style={{ margin: '5px 0', whiteSpace: 'pre-wrap', overflowWrap: 'anywhere', lineHeight: 1.5 }}>
+                            {jugadorLibre.historia}
+                          </p>
+                          <small style={{ color: '#64748b' }}>Relato escrito por el jugador; no verificado por YSASL.</small>
+                        </div>
+                      )}
                     </div>
                     <button
                       type="button"
