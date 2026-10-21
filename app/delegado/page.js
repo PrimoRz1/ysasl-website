@@ -23,6 +23,10 @@ export default function DelegadoPage() {
   const [busquedaLibre, setBusquedaLibre] = useState('')
   const [filtroPosicion, setFiltroPosicion] = useState('')
   const [versionLibres, setVersionLibres] = useState(0)
+  const [invitacionesEnviadas, setInvitacionesEnviadas] = useState([])
+  const [errorInvitaciones, setErrorInvitaciones] = useState('')
+  const [versionInvitaciones, setVersionInvitaciones] = useState(0)
+  const [versionDatos, setVersionDatos] = useState(0)
 
   useEffect(() => {
     let activo = true
@@ -89,7 +93,7 @@ export default function DelegadoPage() {
     }
     cargarDatos()
     return () => { activo = false }
-  }, [equipoId])
+  }, [equipoId, versionDatos])
 
   // La consulta solo se ejecuta si el usuario tiene al menos un equipo asignado.
   // La seguridad real la impone RLS en Supabase, no este filtro de interfaz.
@@ -128,6 +132,33 @@ export default function DelegadoPage() {
     return () => { activo = false }
   }, [equipos.length, versionLibres])
 
+  // Invitaciones visibles solo al delegado asignado al equipo (RLS).
+  useEffect(() => {
+    if (!equipoId) {
+      setInvitacionesEnviadas([])
+      return
+    }
+    let activo = true
+    async function cargarInvitaciones() {
+      setErrorInvitaciones('')
+      const { data, error: errorConsulta } = await supabase
+        .from('invitaciones_jugadores')
+        .select('id, jugador_usuario_id, estado, created_at')
+        .eq('equipo_id', Number(equipoId))
+        .order('created_at', { ascending: false })
+        .limit(100)
+      if (!activo) return
+      if (errorConsulta) {
+        setErrorInvitaciones('No se pudieron cargar las invitaciones: ' + errorConsulta.message)
+        setInvitacionesEnviadas([])
+      } else {
+        setInvitacionesEnviadas(data || [])
+      }
+    }
+    cargarInvitaciones()
+    return () => { activo = false }
+  }, [equipoId, versionInvitaciones])
+
   const equipoActual = equipos.find(e => String(e.equipo_id) === equipoId)
   const nombreEquipo = equipoActual?.equipos?.nombre || `Equipo #${equipoId}`
   // Los nombres iguales no implican duplicados: cada jugador tiene su ID.
@@ -162,6 +193,26 @@ export default function DelegadoPage() {
       if (nombreJugador) setInvitacionLibreManual(texto)
       else setEnlaceManual(texto)
       setMensaje('No se pudo copiar automáticamente. Selecciona y copia el texto que aparece en la página.')
+    }
+  }
+
+  async function invitarJugadorLibre(jugador) {
+    if (!equipoId || procesando !== null) return
+    setProcesando(`invitar-${jugador.usuario_id}`)
+    setMensaje('')
+    setError('')
+    try {
+      const { error: errorRPC } = await supabase.rpc('invitar_jugador_libre', {
+        p_jugador_usuario_id: jugador.usuario_id,
+        p_equipo_id: Number(equipoId)
+      })
+      if (errorRPC) throw errorRPC
+      setMensaje(`Invitación enviada a ${jugador.nombre}. Podrá aceptarla o rechazarla desde su Panel de Jugador.`)
+      setVersionInvitaciones(v => v + 1)
+    } catch (err) {
+      setError('No se pudo enviar la invitación: ' + (err.message || 'Error desconocido.'))
+    } finally {
+      setProcesando(null)
     }
   }
 
@@ -332,9 +383,10 @@ export default function DelegadoPage() {
               Muestra nombre, posición e historia futbolística escrita por el propio jugador. No incluye correos ni contraseñas.
             </p>
             <p style={{ color: '#555', fontSize: '14px' }}>
-              Para invitar a alguien, copia el mensaje y compártelo personalmente.
-              La invitación no se envía automáticamente desde esta página.
-              El jugador deberá solicitar ingreso y tú tendrás que aprobarlo.
+              Presiona «Invitar a mi equipo» para enviar una invitación interna.
+              El jugador podrá aceptarla o rechazarla en su panel.
+              Si acepta, aparecerá en «Solicitudes pendientes» para tu aprobación.
+              También puedes copiar un mensaje y compartirlo personalmente.
             </p>
 
             <div style={{ display: 'flex', gap: '12px', flexWrap: 'wrap', marginBottom: '16px' }}>
@@ -412,17 +464,51 @@ export default function DelegadoPage() {
                         </div>
                       )}
                     </div>
-                    <button
-                      type="button"
-                      onClick={() => copiarInvitacion(jugadorLibre.nombre)}
-                      disabled={!equipoId}
-                      style={{ ...estiloBoton, background: '#0b2948' }}
-                    >
-                      Copiar mensaje de invitación
-                    </button>
+                    <div style={{ display: 'flex', gap: '8px', flexWrap: 'wrap' }}>
+                      <button
+                        type="button"
+                        onClick={() => invitarJugadorLibre(jugadorLibre)}
+                        disabled={!equipoId || procesando !== null || invitacionesEnviadas.some(
+                          i => i.jugador_usuario_id === jugadorLibre.usuario_id &&
+                            ['pendiente', 'aceptada'].includes(i.estado)
+                        )}
+                        style={{ ...estiloBoton, background: '#166534' }}
+                      >
+                        {procesando === `invitar-${jugadorLibre.usuario_id}`
+                          ? 'Enviando...'
+                          : invitacionesEnviadas.some(i => i.jugador_usuario_id === jugadorLibre.usuario_id && i.estado === 'pendiente')
+                            ? 'Invitación pendiente'
+                            : invitacionesEnviadas.some(i => i.jugador_usuario_id === jugadorLibre.usuario_id && i.estado === 'aceptada')
+                              ? 'Invitación aceptada'
+                              : 'Invitar a mi equipo'}
+                      </button>
+                      <button
+                        type="button"
+                        onClick={() => copiarInvitacion(jugadorLibre.nombre)}
+                        disabled={!equipoId}
+                        style={{ ...estiloBoton, background: '#0b2948' }}
+                      >
+                        Copiar mensaje
+                      </button>
+                    </div>
                   </div>
                 ))}
               </>
+            )}
+
+            {errorInvitaciones && <p role="alert" style={{ color: '#b91c1c' }}>{errorInvitaciones}</p>}
+            {invitacionesEnviadas.length > 0 && (
+              <div style={{ marginTop: '18px' }}>
+                <h3>Invitaciones recientes del equipo</h3>
+                {invitacionesEnviadas.slice(0, 10).map(inv => {
+                  const libre = jugadoresLibres.find(j => j.usuario_id === inv.jugador_usuario_id)
+                  return (
+                    <p key={inv.id} style={{ margin: '6px 0', fontSize: '14px' }}>
+                      {libre?.nombre || 'Jugador'} — <strong>{inv.estado}</strong>
+                    </p>
+                  )
+                })}
+              </div>
             )}
 
             {invitacionLibreManual && (
@@ -445,6 +531,14 @@ export default function DelegadoPage() {
           {error && <p role="alert" style={{ color: '#b91c1c' }}>{error}</p>}
 
           <h2>Solicitudes pendientes</h2>
+          <button
+            type="button"
+            onClick={() => setVersionDatos(v => v + 1)}
+            disabled={cargandoDatos}
+            style={{ padding: '9px 14px', marginBottom: '14px' }}
+          >
+            {cargandoDatos ? 'Actualizando...' : 'Actualizar solicitudes'}
+          </button>
           {cargandoDatos ? (
             <p>Cargando solicitudes...</p>
           ) : solicitudes.length === 0 ? (
