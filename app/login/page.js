@@ -56,7 +56,7 @@ export default function LoginPage() {
     // PASSWORD_RECOVERY ocurrió antes de montar este componente.
     const url = new URL(window.location.href)
     const tipo = url.searchParams.get('tipo')
-    setTipoAcceso(tipo === 'jugador' || tipo === 'equipo' ? tipo : '')
+    setTipoAcceso(['jugador', 'equipo', 'admin'].includes(tipo) ? tipo : '')
     if (
       url.searchParams.get('restablecer') === '1' ||
       url.hash.includes('type=recovery')
@@ -263,7 +263,9 @@ export default function LoginPage() {
             ? 'Acceso para Jugadores'
             : tipoAcceso === 'equipo'
               ? 'Acceso para Administradores de Equipo'
-              : 'Acceso YSASL'
+              : tipoAcceso === 'admin'
+                ? 'Acceso exclusivo para Administradores de la Liga'
+                : 'Acceso YSASL'
           : modo === 'recuperar'
             ? 'Recuperar contraseña'
             : 'Nueva contraseña'}
@@ -275,7 +277,9 @@ export default function LoginPage() {
             ? 'Inicia sesión para consultar tu perfil, solicitudes e invitaciones.'
             : tipoAcceso === 'equipo'
               ? 'Inicia sesión para administrar tu equipo y sus jugadores.'
-              : 'Inicia sesión con tu cuenta. El sistema te enviará a tu panel autorizado.'
+              : tipoAcceso === 'admin'
+                ? 'Acceso reservado a los administradores generales autorizados de YSASL.'
+                : 'Inicia sesión con tu cuenta. El sistema te enviará a tu panel autorizado.'
           : modo === 'recuperar'
             ? 'Escribe tu correo para recibir un enlace de recuperación.'
             : 'Escribe y confirma tu nueva contraseña.'}
@@ -403,10 +407,12 @@ export default function LoginPage() {
             </button>
           </p>
 
-          <p style={{ marginTop: '25px' }}>
-            ¿No tienes cuenta?{' '}
-            <a href="/registro">Regístrate aquí</a>
-          </p>
+          {tipoAcceso !== 'admin' && (
+            <p style={{ marginTop: '25px' }}>
+              ¿No tienes cuenta?{' '}
+              <a href="/registro">Regístrate aquí</a>
+            </p>
+          )}
         </>
       ) : (
         <p style={{ marginTop: '25px' }}>
