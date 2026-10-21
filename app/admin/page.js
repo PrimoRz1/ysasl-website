@@ -96,6 +96,22 @@ export default function AdminPage() {
     <main style={{ maxWidth: '1100px', margin: '40px auto', padding: '0 20px' }}>
       <h1>Panel de Administración</h1>
       <p>Yuba Sutter Adult Soccer League</p>
+      <Link
+  href="/mis-paneles"
+  style={{
+    display: 'inline-block',
+    background: '#166534',
+    color: 'white',
+    padding: '12px 18px',
+    borderRadius: '6px',
+    textDecoration: 'none',
+    fontWeight: 'bold',
+    marginTop: '10px',
+    marginRight: '12px'
+  }}
+>
+  🔄 Mis Paneles
+</Link>
 
       <button
         type="button"
