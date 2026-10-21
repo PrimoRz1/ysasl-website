@@ -29,6 +29,7 @@ export default function JugadorPage() {
   const [perfilLibre, setPerfilLibre] = useState(null)
   const [nombreLibre, setNombreLibre] = useState('')
   const [posicionLibre, setPosicionLibre] = useState('')
+  const [historiaLibre, setHistoriaLibre] = useState('')
   const [cargandoLibre, setCargandoLibre] = useState(true)
   const [guardandoLibre, setGuardandoLibre] = useState(false)
   const [mensajeLibre, setMensajeLibre] = useState('')
@@ -65,7 +66,7 @@ export default function JugadorPage() {
               .order('created_at', { ascending: false }),
             supabase
               .from('jugadores_libres')
-              .select('usuario_id, nombre, posicion, disponible')
+              .select('usuario_id, nombre, posicion, historia, disponible')
               .eq('usuario_id', user.id)
               .maybeSingle()
           ])
@@ -85,6 +86,7 @@ export default function JugadorPage() {
           setPerfilLibre(libre)
           setNombreLibre(libre?.nombre || user.user_metadata?.nombre || '')
           setPosicionLibre(libre?.posicion || '')
+          setHistoriaLibre(libre?.historia || '')
         }
 
         if (respuestaEquipos.error || respuestaSolicitudes.error) {
@@ -344,12 +346,19 @@ export default function JugadorPage() {
       return
     }
 
+    const historiaLimpia = historiaLibre.trim()
+    if (historiaLimpia.length > 500) {
+      setErrorLibre('Tu historia debe tener 500 caracteres como máximo.')
+      return
+    }
+
     setGuardandoLibre(true)
     try {
       const perfil = {
         usuario_id: usuario.id,
         nombre: nombreLimpio,
         posicion: posicionLibre || null,
+        historia: historiaLimpia || null,
         disponible: true
       }
       const { error: errorGuardar } = await supabase
@@ -492,6 +501,22 @@ export default function JugadorPage() {
               <option value="Mediocampista">Mediocampista</option>
               <option value="Delantero">Delantero</option>
             </select>
+
+            <label htmlFor="historia-libre">Cuéntanos tu historia futbolística (opcional)</label>
+            <textarea
+              id="historia-libre"
+              value={historiaLibre}
+              onChange={e => setHistoriaLibre(e.target.value)}
+              maxLength={500}
+              rows={5}
+              placeholder="Por ejemplo: Jugué en el equipo de mi colegio, después en la liga local. Me gusta jugar al ataque..."
+              style={{ ...inputStyle, resize: 'vertical', fontFamily: 'inherit' }}
+            />
+            <p style={{ marginTop: '-12px', marginBottom: '18px', fontSize: '13px', color: '#475569' }}>
+              {historiaLibre.length}/500 caracteres. Tu historia la escribes tú;
+              solo la podrán consultar delegados y administradores autorizados.
+              Evita incluir teléfono, dirección u otros datos personales.
+            </p>
 
             {perfilLibre?.disponible && (
               <p style={{ color: '#166534', fontWeight: 'bold' }}>
