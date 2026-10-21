@@ -42,7 +42,8 @@ export default function DelegadoPage() {
           return
         }
 
-        // La administración general utiliza su propio panel.
+        // Un administrador general puede dirigir un equipo si tiene
+        // una asignación activa. El rol determina el panel de retorno.
         const { data: perfil, error: errorPerfil } = await supabase
           .from('perfiles')
           .select('rol')
@@ -50,10 +51,6 @@ export default function DelegadoPage() {
           .maybeSingle()
         if (!activo) return
         if (errorPerfil) throw errorPerfil
-        if (perfil?.rol === 'admin') {
-          router.replace('/admin')
-          return
-        }
 
         // Únicamente una asignación activa permite entrar a este panel.
         const { data: permisos, error: errorPermisos } = await supabase
@@ -65,7 +62,7 @@ export default function DelegadoPage() {
         if (errorPermisos) throw errorPermisos
         const lista = permisos || []
         if (lista.length === 0) {
-          router.replace('/jugador')
+          router.replace(perfil?.rol === 'admin' ? '/admin' : '/jugador')
           return
         }
 
@@ -341,7 +338,10 @@ export default function DelegadoPage() {
     <main style={{ maxWidth: '850px', margin: '40px auto', padding: '20px' }}>
       <h1>Panel de Administradores de Equipo</h1>
       <p>Yuba Sutter Adult Soccer League</p>
-      <button type="button" onClick={cerrarSesion}>Cerrar sesión</button>
+      <div style={{ display: 'flex', gap: '12px', flexWrap: 'wrap' }}>
+        <button type="button" onClick={() => router.push('/mis-paneles')}>Cambiar de panel</button>
+        <button type="button" onClick={cerrarSesion}>Cerrar sesión</button>
+      </div>
       <hr style={{ margin: '30px 0' }} />
 
       <h2>Mis equipos</h2>
