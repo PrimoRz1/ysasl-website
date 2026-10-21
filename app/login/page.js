@@ -23,12 +23,25 @@ const estiloBoton = {
   cursor: 'pointer'
 }
 
+const estiloOpcion = {
+  flex: '1 1 155px',
+  textAlign: 'center',
+  padding: '12px 8px',
+  border: '1px solid #0b2948',
+  borderRadius: '7px',
+  color: '#0b2948',
+  textDecoration: 'none',
+  fontWeight: 'bold',
+  fontSize: '13px'
+}
+
 export default function LoginPage() {
   const router = useRouter()
 
   // 'login' = acceso normal; 'recuperar' = enviar correo;
   // 'nueva' = guardar una nueva contraseña después de abrir el enlace.
   const [modo, setModo] = useState('login')
+  const [tipoAcceso, setTipoAcceso] = useState('')
   const [email, setEmail] = useState('')
   const [password, setPassword] = useState('')
   const [nuevaPassword, setNuevaPassword] = useState('')
@@ -42,6 +55,8 @@ export default function LoginPage() {
     // El parámetro permite mostrar el formulario incluso si el evento
     // PASSWORD_RECOVERY ocurrió antes de montar este componente.
     const url = new URL(window.location.href)
+    const tipo = url.searchParams.get('tipo')
+    setTipoAcceso(tipo === 'jugador' || tipo === 'equipo' ? tipo : '')
     if (
       url.searchParams.get('restablecer') === '1' ||
       url.hash.includes('type=recovery')
@@ -244,7 +259,11 @@ export default function LoginPage() {
     }}>
       <h1 style={{ marginTop: 0 }}>
         {modo === 'login'
-          ? 'Acceso YSASL'
+          ? tipoAcceso === 'jugador'
+            ? 'Acceso para Jugadores'
+            : tipoAcceso === 'equipo'
+              ? 'Acceso para Administradores de Equipo'
+              : 'Acceso YSASL'
           : modo === 'recuperar'
             ? 'Recuperar contraseña'
             : 'Nueva contraseña'}
@@ -252,11 +271,28 @@ export default function LoginPage() {
 
       <p>
         {modo === 'login'
-          ? 'Administradores, delegados y jugadores'
+          ? tipoAcceso === 'jugador'
+            ? 'Inicia sesión para consultar tu perfil, solicitudes e invitaciones.'
+            : tipoAcceso === 'equipo'
+              ? 'Inicia sesión para administrar tu equipo y sus jugadores.'
+              : 'Inicia sesión con tu cuenta. El sistema te enviará a tu panel autorizado.'
           : modo === 'recuperar'
             ? 'Escribe tu correo para recibir un enlace de recuperación.'
             : 'Escribe y confirma tu nueva contraseña.'}
       </p>
+
+      {modo === 'login' && !tipoAcceso && (
+        <div style={{ display: 'flex', flexWrap: 'wrap', gap: '10px', marginBottom: '24px' }}>
+          <a href="/login?tipo=jugador" style={estiloOpcion}>⚽ Jugadores</a>
+          <a href="/login?tipo=equipo" style={estiloOpcion}>👥 Administradores de Equipo</a>
+        </div>
+      )}
+
+      {modo === 'login' && tipoAcceso && (
+        <p style={{ fontSize: '13px', marginTop: '-4px', marginBottom: '20px' }}>
+          <a href="/login">Elegir otro acceso</a>
+        </p>
+      )}
 
       {modo === 'login' && (
         <form onSubmit={iniciarSesion}>
