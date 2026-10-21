@@ -493,6 +493,22 @@ export default function JugadorPage() {
     }}>
       <h1>Mi Panel de Jugador</h1>
       <p>Yuba Sutter Adult Soccer League</p>
+    <a
+  href="/mis-paneles"
+  style={{
+    display: 'inline-block',
+    background: '#166534',
+    color: 'white',
+    padding: '12px 18px',
+    borderRadius: '6px',
+    textDecoration: 'none',
+    fontWeight: 'bold',
+    marginTop: '10px',
+    marginRight: '12px'
+  }}
+>
+  🔄 Mis Paneles
+</a>
 
       <p>Bienvenido, {nombre || usuario?.email}</p>
 
