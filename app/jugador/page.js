@@ -35,6 +35,13 @@ export default function JugadorPage() {
   const [mensajeLibre, setMensajeLibre] = useState('')
   const [errorLibre, setErrorLibre] = useState('')
 
+  // Invitaciones internas que los delegados envían a este jugador.
+  const [invitaciones, setInvitaciones] = useState([])
+  const [cargandoInvitaciones, setCargandoInvitaciones] = useState(true)
+  const [procesandoInvitacion, setProcesandoInvitacion] = useState(null)
+  const [mensajeInvitacion, setMensajeInvitacion] = useState('')
+  const [errorInvitacion, setErrorInvitacion] = useState('')
+
   useEffect(() => {
     let activo = true
 
@@ -52,7 +59,7 @@ export default function JugadorPage() {
 
         const user = auth.user
 
-        const [respuestaEquipos, respuestaSolicitudes, respuestaLibre] =
+        const [respuestaEquipos, respuestaSolicitudes, respuestaLibre, respuestaInvitaciones] =
           await Promise.all([
             supabase
               .from('equipos')
@@ -68,13 +75,26 @@ export default function JugadorPage() {
               .from('jugadores_libres')
               .select('usuario_id, nombre, posicion, historia, disponible')
               .eq('usuario_id', user.id)
-              .maybeSingle()
+              .maybeSingle(),
+            supabase
+              .from('invitaciones_jugadores')
+              .select('id, equipo_id, estado, created_at')
+              .eq('jugador_usuario_id', user.id)
+              .eq('estado', 'pendiente')
+              .order('created_at', { ascending: false })
           ])
 
         if (!activo) return
 
         setUsuario(user)
         setNombre(user.user_metadata?.nombre || '')
+
+        if (respuestaInvitaciones.error) {
+          setErrorInvitacion('No se pudieron cargar tus invitaciones: ' +
+            respuestaInvitaciones.error.message)
+        } else {
+          setInvitaciones(respuestaInvitaciones.data || [])
+        }
 
         // Los errores del directorio no bloquean las solicitudes normales.
         if (respuestaLibre.error) {
@@ -213,6 +233,7 @@ export default function JugadorPage() {
         if (activo) {
           setCargando(false)
           setCargandoLibre(false)
+          setCargandoInvitaciones(false)
         }
       }
     }
@@ -330,6 +351,41 @@ export default function JugadorPage() {
       setError('No se pudo enviar: ' + (err.message || 'Error desconocido.'))
     } finally {
       setGuardando(false)
+    }
+  }
+
+  async function responderInvitacion(id, aceptar) {
+    if (procesandoInvitacion !== null || !usuario) return
+    setProcesandoInvitacion(id)
+    setMensajeInvitacion('')
+    setErrorInvitacion('')
+    try {
+      const { data: respuesta, error: errorRPC } = await supabase.rpc(
+        'responder_invitacion_jugador',
+        { p_invitacion_id: id, p_aceptar: aceptar }
+      )
+      if (errorRPC) throw errorRPC
+      setInvitaciones(actuales => actuales.filter(i => i.id !== id))
+      setMensajeInvitacion(respuesta || (aceptar
+        ? 'Invitación aceptada. Espera la aprobación del delegado.'
+        : 'Invitación rechazada.'))
+
+      if (aceptar) {
+        const { data, error: errorConsulta } = await supabase
+          .from('solicitudes_jugadores')
+          .select('id, equipo_id, estado, created_at')
+          .eq('usuario_id', usuario.id)
+          .order('created_at', { ascending: false })
+        if (errorConsulta) {
+          setErrorInvitacion('Se aceptó la invitación, pero no se pudo actualizar la lista de solicitudes. Recarga la página.')
+        } else {
+          setSolicitudes(data || [])
+        }
+      }
+    } catch (err) {
+      setErrorInvitacion('No se pudo responder: ' + (err.message || 'Error desconocido.'))
+    } finally {
+      setProcesandoInvitacion(null)
     }
   }
 
@@ -456,6 +512,59 @@ export default function JugadorPage() {
           <p>El delegado debe aprobarte antes de ingresar a la plantilla.</p>
         </div>
       )}
+
+      <section style={{
+        border: '1px solid #d5e2ee',
+        borderRadius: '10px',
+        padding: '20px',
+        marginBottom: '30px',
+        background: '#f5f9fd'
+      }}>
+        <h2 style={{ marginTop: 0 }}>Invitaciones de equipos</h2>
+        <p>
+          Los delegados pueden invitarte desde el directorio privado.
+          Tú decides si aceptas. Si aceptas, se enviará una solicitud que
+          el delegado deberá aprobar antes de incorporarte a su plantilla.
+        </p>
+        {cargandoInvitaciones ? (
+          <p>Buscando invitaciones...</p>
+        ) : invitaciones.length === 0 ? (
+          <p>No tienes invitaciones pendientes.</p>
+        ) : (
+          invitaciones.map(invitacion => {
+            const equipo = equipos.find(e => Number(e.id) === Number(invitacion.equipo_id))
+            return (
+              <div key={invitacion.id} style={{
+                background: 'white', border: '1px solid #cbd5e1',
+                borderRadius: '8px', padding: '15px', marginBottom: '12px'
+              }}>
+                <strong>{equipo?.nombre || `Equipo #${invitacion.equipo_id}`}</strong>
+                <p>Este equipo quiere invitarte a su plantilla.</p>
+                <div style={{ display: 'flex', gap: '10px', flexWrap: 'wrap' }}>
+                  <button
+                    type="button"
+                    disabled={procesandoInvitacion !== null}
+                    onClick={() => responderInvitacion(invitacion.id, true)}
+                    style={{ background: '#166534', color: 'white', padding: '10px 14px', border: 0, borderRadius: '6px' }}
+                  >
+                    {procesandoInvitacion === invitacion.id ? 'Procesando...' : 'Aceptar invitación'}
+                  </button>
+                  <button
+                    type="button"
+                    disabled={procesandoInvitacion !== null}
+                    onClick={() => responderInvitacion(invitacion.id, false)}
+                    style={{ background: '#fff', color: '#991b1b', padding: '10px 14px', border: '1px solid #fca5a5', borderRadius: '6px' }}
+                  >
+                    Rechazar
+                  </button>
+                </div>
+              </div>
+            )
+          })
+        )}
+        {mensajeInvitacion && <p role="status" style={{ color: '#166534' }}>{mensajeInvitacion}</p>}
+        {errorInvitacion && <p role="alert" style={{ color: '#b91c1c' }}>{errorInvitacion}</p>}
+      </section>
 
       <section style={{
         border: '1px solid #cbd5e1',
