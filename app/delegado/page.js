@@ -16,6 +16,13 @@ export default function DelegadoPage() {
   const [mensaje, setMensaje] = useState('')
   const [error, setError] = useState('')
   const [enlaceManual, setEnlaceManual] = useState('')
+  const [invitacionLibreManual, setInvitacionLibreManual] = useState('')
+  const [jugadoresLibres, setJugadoresLibres] = useState([])
+  const [cargandoLibres, setCargandoLibres] = useState(false)
+  const [errorLibres, setErrorLibres] = useState('')
+  const [busquedaLibre, setBusquedaLibre] = useState('')
+  const [filtroPosicion, setFiltroPosicion] = useState('')
+  const [versionLibres, setVersionLibres] = useState(0)
 
   useEffect(() => {
     let activo = true
@@ -84,27 +91,77 @@ export default function DelegadoPage() {
     return () => { activo = false }
   }, [equipoId])
 
+  // La consulta solo se ejecuta si el usuario tiene al menos un equipo asignado.
+  // La seguridad real la impone RLS en Supabase, no este filtro de interfaz.
+  useEffect(() => {
+    if (equipos.length === 0) {
+      setJugadoresLibres([])
+      return
+    }
+
+    let activo = true
+    async function cargarJugadoresLibres() {
+      setCargandoLibres(true)
+      setErrorLibres('')
+      try {
+        const { data, error: errorConsulta } = await supabase
+          .from('jugadores_libres')
+          .select('usuario_id, nombre, posicion')
+          .eq('disponible', true)
+          .order('nombre', { ascending: true })
+
+        if (!activo) return
+        if (errorConsulta) throw errorConsulta
+        setJugadoresLibres(data || [])
+      } catch (err) {
+        if (activo) {
+          setJugadoresLibres([])
+          setErrorLibres('No se pudo consultar el directorio privado: ' +
+            (err.message || 'Error desconocido.'))
+        }
+      } finally {
+        if (activo) setCargandoLibres(false)
+      }
+    }
+
+    cargarJugadoresLibres()
+    return () => { activo = false }
+  }, [equipos.length, versionLibres])
+
   const equipoActual = equipos.find(e => String(e.equipo_id) === equipoId)
   const nombreEquipo = equipoActual?.equipos?.nombre || `Equipo #${equipoId}`
-  const conteoNombres = jugadores.reduce((resultado, jugador) => {
-    const nombre = String(jugador.nombre || '').trim().toLocaleLowerCase('es')
-    if (nombre) resultado[nombre] = (resultado[nombre] || 0) + 1
-    return resultado
-  }, {})
+  // Los nombres iguales no implican duplicados: cada jugador tiene su ID.
+  const jugadoresLibresFiltrados = jugadoresLibres.filter(jugador => {
+    const coincideNombre = String(jugador.nombre || '')
+      .toLocaleLowerCase('es')
+      .includes(busquedaLibre.trim().toLocaleLowerCase('es'))
+    const coincidePosicion = !filtroPosicion || jugador.posicion === filtroPosicion
+    return coincideNombre && coincidePosicion
+  })
 
-  async function copiarInvitacion() {
+  async function copiarInvitacion(nombreJugador = '') {
     if (!equipoId) return
     const enlace = `${window.location.origin}/registro?equipo=${encodeURIComponent(equipoId)}`
+    const texto = nombreJugador
+      ? `Hola ${nombreJugador}, te invitamos a unirte a ${nombreEquipo} en YSASL.\n` +
+        `Regístrate aquí: ${enlace}\n` +
+        'Tu solicitud deberá ser aprobada por el delegado antes de entrar al equipo.'
+      : enlace
+
     setError('')
     setMensaje('')
     setEnlaceManual('')
+    setInvitacionLibreManual('')
     try {
       if (!navigator.clipboard?.writeText) throw new Error('Portapapeles no disponible')
-      await navigator.clipboard.writeText(enlace)
-      setMensaje('Enlace copiado. Compártelo por WhatsApp, mensaje o correo.')
+      await navigator.clipboard.writeText(texto)
+      setMensaje(nombreJugador
+        ? `Mensaje para ${nombreJugador} copiado. Compártelo personalmente por WhatsApp, SMS o correo.`
+        : 'Enlace copiado. Compártelo por WhatsApp, mensaje o correo.')
     } catch {
-      setEnlaceManual(enlace)
-      setMensaje('No se pudo copiar automáticamente. Selecciona y copia el enlace de abajo.')
+      if (nombreJugador) setInvitacionLibreManual(texto)
+      else setEnlaceManual(texto)
+      setMensaje('No se pudo copiar automáticamente. Selecciona y copia el texto que aparece en la página.')
     }
   }
 
@@ -212,6 +269,7 @@ export default function DelegadoPage() {
             onChange={e => {
               setEquipoId(e.target.value)
               setEnlaceManual('')
+              setInvitacionLibreManual('')
               setSolicitudes([])
               setJugadores([])
             }}
@@ -239,7 +297,7 @@ export default function DelegadoPage() {
             </p>
             <button
               type="button"
-              onClick={copiarInvitacion}
+              onClick={() => copiarInvitacion()}
               disabled={!equipoId}
               style={{ ...estiloBoton, background: '#0b2948' }}
             >
@@ -261,6 +319,118 @@ export default function DelegadoPage() {
               </div>
             )}
           </div>
+
+          <section aria-labelledby="titulo-jugadores-libres" style={{
+            border: '1px solid #d5e2ee', borderRadius: '10px',
+            padding: '18px', marginBottom: '30px'
+          }}>
+            <h2 id="titulo-jugadores-libres" style={{ marginTop: 0 }}>
+              Jugadores libres
+            </h2>
+            <p>
+              Directorio privado de jugadores que decidieron aparecer como disponibles.
+              Solo muestra nombre y posición; no incluye correos ni contraseñas.
+            </p>
+            <p style={{ color: '#555', fontSize: '14px' }}>
+              Para invitar a alguien, copia el mensaje y compártelo personalmente.
+              La invitación no se envía automáticamente desde esta página.
+              El jugador deberá solicitar ingreso y tú tendrás que aprobarlo.
+            </p>
+
+            <div style={{ display: 'flex', gap: '12px', flexWrap: 'wrap', marginBottom: '16px' }}>
+              <div style={{ flex: '1 1 220px' }}>
+                <label htmlFor="buscar-jugador-libre">Buscar por nombre</label>
+                <input
+                  id="buscar-jugador-libre"
+                  type="search"
+                  value={busquedaLibre}
+                  onChange={e => setBusquedaLibre(e.target.value)}
+                  placeholder="Nombre del jugador"
+                  style={{ display: 'block', width: '100%', boxSizing: 'border-box',
+                    padding: '10px', marginTop: '6px' }}
+                />
+              </div>
+              <div style={{ flex: '1 1 180px' }}>
+                <label htmlFor="filtrar-posicion-libre">Filtrar por posición</label>
+                <select
+                  id="filtrar-posicion-libre"
+                  value={filtroPosicion}
+                  onChange={e => setFiltroPosicion(e.target.value)}
+                  style={{ display: 'block', width: '100%', boxSizing: 'border-box',
+                    padding: '10px', marginTop: '6px' }}
+                >
+                  <option value="">Todas las posiciones</option>
+                  <option value="Portero">Portero</option>
+                  <option value="Defensa">Defensa</option>
+                  <option value="Mediocampista">Mediocampista</option>
+                  <option value="Delantero">Delantero</option>
+                </select>
+              </div>
+            </div>
+
+            <button
+              type="button"
+              onClick={() => setVersionLibres(v => v + 1)}
+              disabled={cargandoLibres}
+              style={{ padding: '9px 14px', marginBottom: '14px' }}
+            >
+              {cargandoLibres ? 'Actualizando...' : 'Actualizar directorio'}
+            </button>
+
+            {errorLibres && (
+              <p role="alert" style={{ color: '#b91c1c' }}>{errorLibres}</p>
+            )}
+
+            {cargandoLibres ? (
+              <p>Cargando jugadores libres...</p>
+            ) : errorLibres ? null : jugadoresLibresFiltrados.length === 0 ? (
+              <p>{jugadoresLibres.length === 0
+                ? 'Todavía no hay jugadores libres disponibles.'
+                : 'No hay jugadores que coincidan con los filtros.'}</p>
+            ) : (
+              <>
+                <p><strong>{jugadoresLibresFiltrados.length} jugador(es) encontrado(s)</strong></p>
+                {jugadoresLibresFiltrados.map(jugadorLibre => (
+                  <div key={jugadorLibre.usuario_id} style={{
+                    border: '1px solid #ddd', borderRadius: '8px',
+                    padding: '14px', marginBottom: '10px',
+                    display: 'flex', alignItems: 'center',
+                    justifyContent: 'space-between', gap: '12px', flexWrap: 'wrap'
+                  }}>
+                    <div>
+                      <strong>{jugadorLibre.nombre}</strong>
+                      <div style={{ fontSize: '13px', color: '#555', marginTop: '4px' }}>
+                        Posición: {jugadorLibre.posicion || 'Sin preferencia'}
+                      </div>
+                    </div>
+                    <button
+                      type="button"
+                      onClick={() => copiarInvitacion(jugadorLibre.nombre)}
+                      disabled={!equipoId}
+                      style={{ ...estiloBoton, background: '#0b2948' }}
+                    >
+                      Copiar mensaje de invitación
+                    </button>
+                  </div>
+                ))}
+              </>
+            )}
+
+            {invitacionLibreManual && (
+              <div style={{ marginTop: '16px' }}>
+                <label htmlFor="invitacion-libre-manual">Mensaje para copiar</label>
+                <textarea
+                  id="invitacion-libre-manual"
+                  readOnly
+                  rows={4}
+                  value={invitacionLibreManual}
+                  onFocus={e => e.target.select()}
+                  style={{ display: 'block', width: '100%', boxSizing: 'border-box',
+                    padding: '10px', marginTop: '6px' }}
+                />
+              </div>
+            )}
+          </section>
 
           {mensaje && <p role="status" style={{ color: 'green' }}>{mensaje}</p>}
           {error && <p role="alert" style={{ color: '#b91c1c' }}>{error}</p>}
@@ -315,13 +485,8 @@ export default function DelegadoPage() {
           ) : (
             <>
               <p><strong>Jugadores activos: {jugadores.length}</strong></p>
-              {jugadores.map(jugador => {
-                const nombreNormalizado = String(jugador.nombre || '')
-                  .trim().toLocaleLowerCase('es')
-                const posibleDuplicado =
-                  nombreNormalizado && conteoNombres[nombreNormalizado] > 1
-                return (
-                  <div key={jugador.id} style={{
+              {jugadores.map(jugador => (
+                <div key={jugador.id} style={{
                     border: '1px solid #ddd', borderRadius: '8px',
                     padding: '14px', marginBottom: '10px',
                     display: 'flex', alignItems: 'center',
@@ -333,11 +498,6 @@ export default function DelegadoPage() {
                       <div style={{ fontSize: '13px', color: '#555', marginTop: '4px' }}>
                         ID #{jugador.id} · Camiseta: {jugador.numero ?? 'Sin número'}
                       </div>
-                      {posibleDuplicado && (
-                        <div style={{ color: '#9a6700', fontSize: '13px', marginTop: '4px' }}>
-                          Posible duplicado: verifica el ID antes de dar de baja.
-                        </div>
-                      )}
                     </div>
                     <button
                       type="button"
@@ -347,9 +507,8 @@ export default function DelegadoPage() {
                     >
                       {procesando === `baja-${jugador.id}` ? 'Procesando...' : 'Dar de baja'}
                     </button>
-                  </div>
-                )
-              })}
+                </div>
+              ))}
             </>
           )}
         </>
