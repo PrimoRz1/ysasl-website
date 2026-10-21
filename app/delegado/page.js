@@ -6,12 +6,12 @@ import { supabase } from '../../lib/supabase'
 
 export default function DelegadoPage() {
   const router = useRouter()
-
   const [equipos, setEquipos] = useState([])
   const [equipoId, setEquipoId] = useState('')
   const [solicitudes, setSolicitudes] = useState([])
+  const [jugadores, setJugadores] = useState([])
   const [cargando, setCargando] = useState(true)
-  const [cargandoSolicitudes, setCargandoSolicitudes] = useState(false)
+  const [cargandoDatos, setCargandoDatos] = useState(false)
   const [procesando, setProcesando] = useState(null)
   const [mensaje, setMensaje] = useState('')
   const [error, setError] = useState('')
@@ -19,332 +19,280 @@ export default function DelegadoPage() {
 
   useEffect(() => {
     let activo = true
-
     async function verificarDelegado() {
       try {
-        const { data, error: errorAuth } =
-          await supabase.auth.getUser()
-
+        const { data, error: errorAuth } = await supabase.auth.getUser()
         if (errorAuth || !data.user) {
           router.replace('/login')
           return
         }
-
-        const { data: permisos, error: errorPermisos } =
-          await supabase
-            .from('delegados_equipo')
-            .select('equipo_id, tipo, equipos(nombre)')
-            .eq('usuario_id', data.user.id)
-            .eq('activo', true)
-
+        const { data: permisos, error: errorPermisos } = await supabase
+          .from('delegados_equipo')
+          .select('equipo_id, tipo, equipos(nombre)')
+          .eq('usuario_id', data.user.id)
+          .eq('activo', true)
         if (errorPermisos) throw errorPermisos
         if (!activo) return
-
         const lista = permisos || []
         setEquipos(lista)
-
-        if (lista.length > 0) {
-          setEquipoId(String(lista[0].equipo_id))
-        }
+        if (lista.length > 0) setEquipoId(String(lista[0].equipo_id))
       } catch (err) {
-        if (activo) {
-          setError(err.message || 'Error verificando permisos.')
-        }
+        if (activo) setError(err.message || 'Error verificando permisos.')
       } finally {
         if (activo) setCargando(false)
       }
     }
-
     verificarDelegado()
-
-    return () => {
-      activo = false
-    }
+    return () => { activo = false }
   }, [router])
 
   useEffect(() => {
     if (!equipoId) return
-
     let activo = true
-
-    async function cargarSolicitudes() {
-      setCargandoSolicitudes(true)
+    async function cargarDatos() {
+      setCargandoDatos(true)
       setError('')
       setMensaje('')
-
-      const { data, error: errorConsulta } =
-        await supabase
-          .from('solicitudes_jugadores')
-          .select('id, nombre, numero, estado, created_at')
-          .eq('equipo_id', Number(equipoId))
-          .eq('estado', 'pendiente')
-          .order('created_at', { ascending: true })
-
-      if (!activo) return
-
-      if (errorConsulta) {
-        setError(errorConsulta.message)
-      } else {
-        setSolicitudes(data || [])
+      try {
+        const [resSolicitudes, resJugadores] = await Promise.all([
+          supabase.from('solicitudes_jugadores')
+            .select('id, nombre, numero, estado, created_at')
+            .eq('equipo_id', Number(equipoId))
+            .eq('estado', 'pendiente')
+            .order('created_at', { ascending: true }),
+          supabase.from('jugadores')
+            .select('id, equipo_id, nombre, numero, activo')
+            .eq('equipo_id', Number(equipoId))
+            .eq('activo', true)
+            .order('nombre')
+        ])
+        if (!activo) return
+        setSolicitudes(resSolicitudes.error ? [] : (resSolicitudes.data || []))
+        setJugadores(resJugadores.error ? [] : (resJugadores.data || []))
+        const errores = [
+          resSolicitudes.error && 'Solicitudes: ' + resSolicitudes.error.message,
+          resJugadores.error && 'Plantilla: ' + resJugadores.error.message
+        ].filter(Boolean)
+        if (errores.length) setError(errores.join(' | '))
+      } catch (err) {
+        if (activo) setError('No se pudieron cargar los datos: ' + err.message)
+      } finally {
+        if (activo) setCargandoDatos(false)
       }
-
-      setCargandoSolicitudes(false)
     }
-
-    cargarSolicitudes()
-
-    return () => {
-      activo = false
-    }
+    cargarDatos()
+    return () => { activo = false }
   }, [equipoId])
+
+  const equipoActual = equipos.find(e => String(e.equipo_id) === equipoId)
+  const nombreEquipo = equipoActual?.equipos?.nombre || `Equipo #${equipoId}`
+  const conteoNombres = jugadores.reduce((resultado, jugador) => {
+    const nombre = String(jugador.nombre || '').trim().toLocaleLowerCase('es')
+    if (nombre) resultado[nombre] = (resultado[nombre] || 0) + 1
+    return resultado
+  }, {})
 
   async function copiarInvitacion() {
     if (!equipoId) return
-
-    const enlace =
-      `${window.location.origin}/registro?equipo=${encodeURIComponent(equipoId)}`
-
+    const enlace = `${window.location.origin}/registro?equipo=${encodeURIComponent(equipoId)}`
     setError('')
     setMensaje('')
     setEnlaceManual('')
-
     try {
-      if (!navigator.clipboard?.writeText) {
-        throw new Error('Portapapeles no disponible')
-      }
-
+      if (!navigator.clipboard?.writeText) throw new Error('Portapapeles no disponible')
       await navigator.clipboard.writeText(enlace)
       setMensaje('Enlace copiado. Compártelo por WhatsApp, mensaje o correo.')
     } catch {
       setEnlaceManual(enlace)
-      setMensaje('No se pudo copiar automáticamente. Selecciona y copia el enlace que aparece abajo.')
+      setMensaje('No se pudo copiar automáticamente. Selecciona y copia el enlace de abajo.')
     }
   }
 
   async function resolverSolicitud(id, aprobar) {
     if (procesando !== null) return
-
-    setProcesando(id)
+    setProcesando(`solicitud-${id}`)
     setMensaje('')
     setError('')
-
     try {
-      const { error: errorRPC } = await supabase.rpc(
-        'resolver_solicitud_jugador',
-        {
-          p_solicitud_id: id,
-          p_aprobar: aprobar
-        }
-      )
-
+      const { error: errorRPC } = await supabase.rpc('resolver_solicitud_jugador', {
+        p_solicitud_id: id,
+        p_aprobar: aprobar
+      })
       if (errorRPC) throw errorRPC
-
-      setSolicitudes(actuales =>
-        actuales.filter(s => s.id !== id)
-      )
-
-      setMensaje(
-        aprobar
-          ? 'Jugador aprobado e incorporado al equipo.'
-          : 'Solicitud rechazada correctamente.'
-      )
+      setSolicitudes(actuales => actuales.filter(s => s.id !== id))
+      setMensaje(aprobar
+        ? 'Jugador aprobado e incorporado al equipo.'
+        : 'Solicitud rechazada correctamente.')
+      if (aprobar) {
+        const { data, error: errorConsulta } = await supabase.from('jugadores')
+          .select('id, equipo_id, nombre, numero, activo')
+          .eq('equipo_id', Number(equipoId))
+          .eq('activo', true)
+          .order('nombre')
+        if (errorConsulta) {
+          setError('Se aprobó la solicitud, pero no se pudo actualizar la plantilla. Recarga la página.')
+        } else {
+          setJugadores(data || [])
+        }
+      }
     } catch (err) {
-      setError(
-        'No se pudo procesar la solicitud: ' + err.message
-      )
+      setError('No se pudo procesar la solicitud: ' + err.message)
+    } finally {
+      setProcesando(null)
+    }
+  }
+
+  async function darDeBaja(jugador) {
+    if (procesando !== null || !equipoId) return
+    const pertenece = jugadores.some(j =>
+      Number(j.id) === Number(jugador.id) &&
+      Number(j.equipo_id) === Number(equipoId)
+    )
+    if (!pertenece) {
+      setError('Este jugador no pertenece a la plantilla activa seleccionada.')
+      return
+    }
+    const confirmado = window.confirm(
+      `¿Dar de baja a ${jugador.nombre} (ID #${jugador.id}) de ${nombreEquipo}?\n\n` +
+      'Se retirará de la plantilla activa. Su cuenta, goles, tarjetas y estadísticas ' +
+      'históricas se conservarán.'
+    )
+    if (!confirmado) return
+
+    setProcesando(`baja-${jugador.id}`)
+    setMensaje('')
+    setError('')
+    try {
+      const { error: errorRPC } = await supabase.rpc('dar_de_baja_jugador', {
+        p_jugador_id: jugador.id
+      })
+      if (errorRPC) throw errorRPC
+      setJugadores(actuales => actuales.filter(j => Number(j.id) !== Number(jugador.id)))
+      setMensaje(`${jugador.nombre} (ID #${jugador.id}) fue dado de baja de ${nombreEquipo}. Su historial se conserva.`)
+    } catch (err) {
+      setError('No se pudo dar de baja al jugador: ' + err.message)
     } finally {
       setProcesando(null)
     }
   }
 
   async function cerrarSesion() {
-    const { error: errorSalida } =
-      await supabase.auth.signOut()
-
+    const { error: errorSalida } = await supabase.auth.signOut()
     if (errorSalida) {
       setError(errorSalida.message)
       return
     }
-
     router.replace('/login')
     router.refresh()
   }
 
-  if (cargando) {
-    return (
-      <main style={{ padding: 30 }}>
-        Verificando acceso...
-      </main>
-    )
+  const estiloBoton = {
+    padding: '12px 18px', color: 'white', border: 'none',
+    borderRadius: '6px', cursor: 'pointer', fontWeight: 'bold'
   }
 
+  if (cargando) return <main style={{ padding: 30 }}>Verificando acceso...</main>
+
   return (
-    <main style={{
-      maxWidth: '850px',
-      margin: '40px auto',
-      padding: '20px'
-    }}>
+    <main style={{ maxWidth: '850px', margin: '40px auto', padding: '20px' }}>
       <h1>Panel de Delegados</h1>
       <p>Yuba Sutter Adult Soccer League</p>
-
-      <button onClick={cerrarSesion}>
-        Cerrar sesión
-      </button>
-
+      <button type="button" onClick={cerrarSesion}>Cerrar sesión</button>
       <hr style={{ margin: '30px 0' }} />
 
       <h2>Mis equipos</h2>
-
       {equipos.length === 0 ? (
-        <p>
-          No tienes equipos asignados actualmente.
-          Contacta al administrador de YSASL.
-        </p>
+        <p>No tienes equipos asignados actualmente. Contacta al administrador de YSASL.</p>
       ) : (
         <>
-          <label htmlFor="equipo-delegado">
-            Seleccionar equipo
-          </label>
-
+          <label htmlFor="equipo-delegado">Seleccionar equipo</label>
           <select
             id="equipo-delegado"
             value={equipoId}
             onChange={e => {
               setEquipoId(e.target.value)
               setEnlaceManual('')
+              setSolicitudes([])
+              setJugadores([])
             }}
             disabled={procesando !== null}
             style={{
-              display: 'block',
-              width: '100%',
-              padding: '12px',
-              marginTop: '10px',
-              marginBottom: '20px'
+              display: 'block', width: '100%', padding: '12px',
+              marginTop: '10px', marginBottom: '20px'
             }}
           >
             {equipos.map(equipo => (
-              <option
-                key={equipo.equipo_id}
-                value={equipo.equipo_id}
-              >
-                {equipo.equipos?.nombre ||
-                  `Equipo #${equipo.equipo_id}`}
+              <option key={equipo.equipo_id} value={equipo.equipo_id}>
+                {equipo.equipos?.nombre || `Equipo #${equipo.equipo_id}`}
               </option>
             ))}
           </select>
 
           <div style={{
-            border: '1px solid #d5e2ee',
-            background: '#f5f9fd',
-            borderRadius: '10px',
-            padding: '18px',
-            marginBottom: '30px'
+            border: '1px solid #d5e2ee', background: '#f5f9fd',
+            borderRadius: '10px', padding: '18px', marginBottom: '30px'
           }}>
             <h3 style={{ marginTop: 0 }}>Invitar jugadores</h3>
             <p>
-              Comparte el enlace de tu equipo. Cada jugador deberá
-              registrarse y solicitar ingreso; el delegado aprobará
-              su solicitud antes de incorporarlo.
+              Comparte el enlace de tu equipo. Cada jugador deberá registrarse
+              y solicitar ingreso; el delegado aprobará su solicitud antes de incorporarlo.
             </p>
             <button
               type="button"
               onClick={copiarInvitacion}
               disabled={!equipoId}
-              style={{
-                padding: '12px 18px',
-                background: '#0b2948',
-                color: 'white',
-                border: 'none',
-                borderRadius: '6px',
-                cursor: 'pointer',
-                fontWeight: 'bold'
-              }}
+              style={{ ...estiloBoton, background: '#0b2948' }}
             >
               Copiar invitación del equipo
             </button>
             {enlaceManual && (
               <div style={{ marginTop: '12px' }}>
-                <label htmlFor="enlace-invitacion">
-                  Enlace para copiar
-                </label>
+                <label htmlFor="enlace-invitacion">Enlace para copiar</label>
                 <input
                   id="enlace-invitacion"
                   readOnly
                   value={enlaceManual}
                   onFocus={e => e.target.select()}
                   style={{
-                    display: 'block',
-                    width: '100%',
-                    padding: '10px',
-                    marginTop: '6px',
-                    boxSizing: 'border-box'
+                    display: 'block', width: '100%', padding: '10px',
+                    marginTop: '6px', boxSizing: 'border-box'
                   }}
                 />
               </div>
             )}
           </div>
 
-          <h2>Solicitudes pendientes</h2>
+          {mensaje && <p role="status" style={{ color: 'green' }}>{mensaje}</p>}
+          {error && <p role="alert" style={{ color: '#b91c1c' }}>{error}</p>}
 
-          {cargandoSolicitudes ? (
+          <h2>Solicitudes pendientes</h2>
+          {cargandoDatos ? (
             <p>Cargando solicitudes...</p>
           ) : solicitudes.length === 0 ? (
             <p>No hay solicitudes pendientes.</p>
           ) : (
             solicitudes.map(solicitud => (
-              <div
-                key={solicitud.id}
-                style={{
-                  border: '1px solid #ddd',
-                  borderRadius: '10px',
-                  padding: '20px',
-                  marginBottom: '15px'
-                }}
-              >
+              <div key={solicitud.id} style={{
+                border: '1px solid #ddd', borderRadius: '10px',
+                padding: '20px', marginBottom: '15px'
+              }}>
                 <h3>{solicitud.nombre}</h3>
-
-                <p>
-                  Número de camiseta:{' '}
-                  {solicitud.numero ?? 'Sin número'}
-                </p>
-
-                <p>
-                  Estado: {solicitud.estado}
-                </p>
-
-                <div style={{
-                  display: 'flex',
-                  gap: '12px',
-                  flexWrap: 'wrap'
-                }}>
+                <p>Número de camiseta: {solicitud.numero ?? 'Sin número'}</p>
+                <p>Estado: {solicitud.estado}</p>
+                <div style={{ display: 'flex', gap: '12px', flexWrap: 'wrap' }}>
                   <button
+                    type="button"
                     disabled={procesando !== null}
-                    onClick={() =>
-                      resolverSolicitud(solicitud.id, true)
-                    }
-                    style={{
-                      padding: '12px 20px',
-                      background: '#16803c',
-                      color: 'white',
-                      border: 'none',
-                      borderRadius: '6px'
-                    }}
+                    onClick={() => resolverSolicitud(solicitud.id, true)}
+                    style={{ ...estiloBoton, background: '#16803c' }}
                   >
-                    Aprobar
+                    {procesando === `solicitud-${solicitud.id}` ? 'Procesando...' : 'Aprobar'}
                   </button>
-
                   <button
+                    type="button"
                     disabled={procesando !== null}
-                    onClick={() =>
-                      resolverSolicitud(solicitud.id, false)
-                    }
-                    style={{
-                      padding: '12px 20px',
-                      background: '#b91c1c',
-                      color: 'white',
-                      border: 'none',
-                      borderRadius: '6px'
-                    }}
+                    onClick={() => resolverSolicitud(solicitud.id, false)}
+                    style={{ ...estiloBoton, background: '#b91c1c' }}
                   >
                     Rechazar
                   </button>
@@ -352,19 +300,66 @@ export default function DelegadoPage() {
               </div>
             ))
           )}
+
+          <hr style={{ margin: '30px 0' }} />
+          <h2>Administrar jugadores</h2>
+          <p>
+            Plantilla activa de <strong>{nombreEquipo}</strong>.
+            Revisa el nombre y el ID antes de dar de baja a alguien.
+            La baja conserva su historial.
+          </p>
+          {cargandoDatos ? (
+            <p>Cargando jugadores...</p>
+          ) : jugadores.length === 0 ? (
+            <p>No hay jugadores activos en este equipo.</p>
+          ) : (
+            <>
+              <p><strong>Jugadores activos: {jugadores.length}</strong></p>
+              {jugadores.map(jugador => {
+                const nombreNormalizado = String(jugador.nombre || '')
+                  .trim().toLocaleLowerCase('es')
+                const posibleDuplicado =
+                  nombreNormalizado && conteoNombres[nombreNormalizado] > 1
+                return (
+                  <div key={jugador.id} style={{
+                    border: '1px solid #ddd', borderRadius: '8px',
+                    padding: '14px', marginBottom: '10px',
+                    display: 'flex', alignItems: 'center',
+                    justifyContent: 'space-between', gap: '14px',
+                    flexWrap: 'wrap'
+                  }}>
+                    <div>
+                      <strong>{jugador.nombre}</strong>
+                      <div style={{ fontSize: '13px', color: '#555', marginTop: '4px' }}>
+                        ID #{jugador.id} · Camiseta: {jugador.numero ?? 'Sin número'}
+                      </div>
+                      {posibleDuplicado && (
+                        <div style={{ color: '#9a6700', fontSize: '13px', marginTop: '4px' }}>
+                          Posible duplicado: verifica el ID antes de dar de baja.
+                        </div>
+                      )}
+                    </div>
+                    <button
+                      type="button"
+                      disabled={procesando !== null}
+                      onClick={() => darDeBaja(jugador)}
+                      style={{ ...estiloBoton, background: '#b91c1c' }}
+                    >
+                      {procesando === `baja-${jugador.id}` ? 'Procesando...' : 'Dar de baja'}
+                    </button>
+                  </div>
+                )
+              })}
+            </>
+          )}
         </>
       )}
 
-      {mensaje && (
-        <p role="status" style={{ color: 'green' }}>
-          {mensaje}
-        </p>
+      {equipos.length === 0 && mensaje && (
+        <p role="status" style={{ color: 'green' }}>{mensaje}</p>
       )}
-
-      {error && (
-        <p role="alert" style={{ color: 'red' }}>
-          {error}
-        </p>
+      {equipos.length === 0 && error && (
+        <p role="alert" style={{ color: 'red' }}>{error}</p>
       )}
     </main>
   )
