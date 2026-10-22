@@ -122,10 +122,10 @@ export default async function Clasificacion() {
   }
 
   const celda = {
-    borderBottom: '1px solid #e2e8f0',
-    padding: '7px 8px',
+    borderBottom: '1px solid #dce5ee',
+    padding: '13px 12px',
     textAlign: 'center',
-    fontSize: '12px',
+    fontSize: '15px',
     whiteSpace: 'nowrap',
     fontVariantNumeric: 'tabular-nums',
   }
@@ -136,20 +136,23 @@ export default async function Clasificacion() {
     color: '#fff',
     fontWeight: 'bold',
     borderBottom: 'none',
-    padding: '9px 8px',
+    padding: '14px 12px',
+    fontSize: '14px',
   }
 
   return (
     <main
       style={{
-        maxWidth: '1000px',
+        maxWidth: '1120px',
         margin: '0 auto',
-        padding: '24px 12px',
+        padding: '32px 18px',
         fontFamily: 'Arial, sans-serif',
       }}
     >
-      <h1 style={{ color: '#0b2341', marginBottom: '6px' }}>Clasificación</h1>
-      <p style={{ marginTop: 0, color: '#64748b', fontSize: '14px' }}>
+      <h1 style={{ color: '#0b2341', marginBottom: '8px', fontSize: '32px' }}>
+        Clasificación
+      </h1>
+      <p style={{ marginTop: 0, color: '#64748b', fontSize: '15px' }}>
         Yuba Sutter Adult Soccer League
       </p>
 
@@ -162,8 +165,8 @@ export default async function Clasificacion() {
         const cupos = cantidadClasificados(clasificacion.length)
 
         return (
-          <section key={division.id} style={{ marginTop: '28px', marginBottom: '36px' }}>
-            <h2 style={{ color: '#0b2341', fontSize: '19px', marginBottom: '8px' }}>
+          <section key={division.id} style={{ marginTop: '36px', marginBottom: '48px' }}>
+            <h2 style={{ color: '#0b2341', fontSize: '23px', marginBottom: '12px' }}>
               {division.nombre}
             </h2>
 
@@ -172,18 +175,18 @@ export default async function Clasificacion() {
             ) : (
               <>
                 {cupos > 0 && (
-                  <p style={{ fontSize: '12px', color: '#166534', margin: '6px 0 10px' }}>
+                  <p style={{ fontSize: '14px', color: '#166534', margin: '8px 0 14px' }}>
                     <span
                       aria-hidden="true"
                       style={{
                         display: 'inline-block',
-                        width: '11px',
-                        height: '11px',
+                        width: '13px',
+                        height: '13px',
                         background: '#dcfce7',
                         border: '1px solid #86b99a',
-                        borderRadius: '2px',
+                        borderRadius: '3px',
                         verticalAlign: 'middle',
-                        marginRight: '6px',
+                        marginRight: '8px',
                       }}
                     />
                     Verde claro: zona de liguilla (primeros {cupos} de {clasificacion.length} equipos).
@@ -199,21 +202,21 @@ export default async function Clasificacion() {
                     overflowX: 'auto',
                     WebkitOverflowScrolling: 'touch',
                     border: '1px solid #dbe2ea',
-                    borderRadius: '7px',
+                    borderRadius: '9px',
                   }}
                 >
                   <table
                     style={{
                       width: '100%',
-                      minWidth: '640px',
+                      minWidth: '830px',
                       borderCollapse: 'collapse',
                       tableLayout: 'auto',
                     }}
                   >
                     <thead>
                       <tr>
-                        <th scope="col" style={{ ...encabezado, width: '35px' }}>#</th>
-                        <th scope="col" style={{ ...encabezado, textAlign: 'left', minWidth: '155px' }}>Equipo</th>
+                        <th scope="col" style={{ ...encabezado, width: '42px' }}>#</th>
+                        <th scope="col" style={{ ...encabezado, textAlign: 'left', minWidth: '200px' }}>Equipo</th>
                         <th scope="col" style={encabezado}>PTS</th>
                         <th scope="col" style={encabezado}>PJ</th>
                         <th scope="col" style={encabezado}>PG</th>
