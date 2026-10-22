@@ -577,35 +577,54 @@ export default async function Home() {
                   Verde claro: zona de liguilla (primeros {cupos} de {tabla.length} equipos).
                 </p>
               )}
-              <div style={{ overflowX: 'auto', borderRadius: '10px' }}>
-                <table style={{ borderCollapse: 'collapse', width: '100%' }}>
-                  <thead style={{ background: '#0b2341', color: 'white' }}>
+              <div
+                role="region"
+                aria-label={`Tabla de clasificación de ${division.nombre}`}
+                tabIndex={0}
+                style={{
+                  width: '100%',
+                  overflowX: 'auto',
+                  WebkitOverflowScrolling: 'touch',
+                  border: '1px solid #dbe2ea',
+                  borderRadius: '10px',
+                }}
+              >
+                <table style={{ borderCollapse: 'collapse', width: '100%', minWidth: '790px' }}>
+                  <thead>
                     <tr>
-                      <th style={celda}>#</th>
-                      <th style={{ ...celda, textAlign: 'left' }}>Equipo</th>
-                      <th style={celda}>PJ</th>
-                      <th style={celda}>PG</th>
-                      <th style={celda}>PE</th>
-                      <th style={celda}>PP</th>
-                      <th style={celda}>GF</th>
-                      <th style={celda}>GC</th>
-                      <th style={celda}>DG</th>
-                      <th style={celda}>PTS</th>
+                      <th scope="col" style={{ ...encabezadoTabla, width: '38px' }}>#</th>
+                      <th scope="col" style={{ ...encabezadoTabla, textAlign: 'left', minWidth: '230px' }}>Equipo</th>
+                      <th scope="col" style={encabezadoTabla}>PTS</th>
+                      <th scope="col" style={encabezadoTabla}>PJ</th>
+                      <th scope="col" style={encabezadoTabla}>PG</th>
+                      <th scope="col" style={encabezadoTabla}>PE</th>
+                      <th scope="col" style={encabezadoTabla}>PP</th>
+                      <th scope="col" style={encabezadoTabla}>GF</th>
+                      <th scope="col" style={encabezadoTabla}>GC</th>
+                      <th scope="col" style={encabezadoTabla}>DG</th>
                     </tr>
                   </thead>
                   <tbody>
                     {tabla.map((fila, index) => (
-                      <tr key={`${division.id}-${fila.equipo}`} style={{ background: index < cupos ? '#dcfce7' : (index % 2 ? '#f8fafc' : 'white') }}>
+                      <tr
+                        key={`${division.id}-${fila.equipo}`}
+                        style={{ background: index < cupos ? '#dcfce7' : (index % 2 ? '#f8fafc' : 'white') }}
+                      >
                         <td style={celda}>{index + 1}</td>
-                        <td style={{ ...celda, textAlign: 'left', fontWeight: 'bold' }}><span style={{ display: 'inline-flex', alignItems: 'center', gap: 8 }}><EscudoEquipo nombre={fila.equipo} divisionId={division.id} escudos={escudos} size={28} />{fila.equipo}</span></td>
+                        <td style={{ ...celda, textAlign: 'left', fontWeight: 'bold' }}>
+                          <span style={{ display: 'inline-flex', alignItems: 'center', gap: '10px' }}>
+                            <EscudoEquipo nombre={fila.equipo} divisionId={division.id} escudos={escudos} size={30} />
+                            {fila.equipo}
+                          </span>
+                        </td>
+                        <td style={{ ...celda, fontWeight: 'bold', color: '#0b2341' }}>{fila.pts}</td>
                         <td style={celda}>{fila.pj}</td>
                         <td style={celda}>{fila.pg}</td>
                         <td style={celda}>{fila.pe}</td>
                         <td style={celda}>{fila.pp}</td>
                         <td style={celda}>{fila.gf}</td>
                         <td style={celda}>{fila.gc}</td>
-                        <td style={celda}>{fila.dg}</td>
-                        <td style={celda}><strong>{fila.pts}</strong></td>
+                        <td style={celda}>{Number(fila.dg) > 0 ? `+${fila.dg}` : fila.dg}</td>
                       </tr>
                     ))}
                   </tbody>
@@ -768,7 +787,20 @@ justifyContent: 'center',
 }
 
 const celda = {
-  border: '1px solid #ddd',
-  padding: '8px',
-  textAlign: 'center'
+  borderBottom: '1px solid #dbe2ea',
+  padding: '12px 11px',
+  textAlign: 'center',
+  fontSize: '15px',
+  whiteSpace: 'nowrap',
+  fontVariantNumeric: 'tabular-nums',
+}
+
+const encabezadoTabla = {
+  ...celda,
+  background: '#0b2341',
+  color: '#fff',
+  fontWeight: 'bold',
+  borderBottom: 'none',
+  padding: '13px 11px',
+  fontSize: '14px',
 }
