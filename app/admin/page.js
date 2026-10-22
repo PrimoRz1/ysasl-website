@@ -164,6 +164,11 @@ export default function AdminPage() {
           descripcion="Asignar delegados a equipos y controlar sus accesos"
           href="/admin/delegados"
         />
+            <AdminCard
+  titulo="🔐 Administradores Generales"
+  descripcion="Invitar administradores y administrar sus accesos"
+  href="/admin/administradores"
+/>
       </div>
     </main>
   )
