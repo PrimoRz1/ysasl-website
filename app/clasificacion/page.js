@@ -61,7 +61,6 @@ export default async function Clasificacion() {
     partidosDivision.forEach((partido) => {
       const local = partido.local_id
       const visitante = partido.visitante_id
-
       const golesLocal = Number(partido.goles_local)
       const golesVisitante = Number(partido.goles_visitante)
 
@@ -77,28 +76,14 @@ export default async function Clasificacion() {
       if (!tabla[local]) {
         tabla[local] = {
           equipo: equipos?.find((e) => Number(e.id) === Number(local))?.nombre || `Equipo ${local}`,
-          pj: 0,
-          pg: 0,
-          pe: 0,
-          pp: 0,
-          gf: 0,
-          gc: 0,
-          dg: 0,
-          pts: 0,
+          pj: 0, pg: 0, pe: 0, pp: 0, gf: 0, gc: 0, dg: 0, pts: 0,
         }
       }
 
       if (!tabla[visitante]) {
         tabla[visitante] = {
           equipo: equipos?.find((e) => Number(e.id) === Number(visitante))?.nombre || `Equipo ${visitante}`,
-          pj: 0,
-          pg: 0,
-          pe: 0,
-          pp: 0,
-          gf: 0,
-          gc: 0,
-          dg: 0,
-          pts: 0,
+          pj: 0, pg: 0, pe: 0, pp: 0, gf: 0, gc: 0, dg: 0, pts: 0,
         }
       }
 
@@ -107,7 +92,6 @@ export default async function Clasificacion() {
 
       tabla[local].gf += golesLocal
       tabla[local].gc += golesVisitante
-
       tabla[visitante].gf += golesVisitante
       tabla[visitante].gc += golesLocal
 
@@ -128,10 +112,7 @@ export default async function Clasificacion() {
     })
 
     return Object.values(tabla)
-      .map((equipo) => ({
-        ...equipo,
-        dg: equipo.gf - equipo.gc,
-      }))
+      .map((equipo) => ({ ...equipo, dg: equipo.gf - equipo.gc }))
       .sort((a, b) => {
         if (b.pts !== a.pts) return b.pts - a.pts
         if (b.dg !== a.dg) return b.dg - a.dg
@@ -141,33 +122,39 @@ export default async function Clasificacion() {
   }
 
   const celda = {
-    border: '1px solid #ddd',
-    padding: '10px',
+    borderBottom: '1px solid #e2e8f0',
+    padding: '7px 8px',
     textAlign: 'center',
+    fontSize: '12px',
+    whiteSpace: 'nowrap',
+    fontVariantNumeric: 'tabular-nums',
   }
 
-  const equipoCelda = {
+  const encabezado = {
     ...celda,
-    textAlign: 'left',
+    background: '#0b2341',
+    color: '#fff',
+    fontWeight: 'bold',
+    borderBottom: 'none',
+    padding: '9px 8px',
   }
 
   return (
     <main
       style={{
-        maxWidth: '1100px',
+        maxWidth: '1000px',
         margin: '0 auto',
-        padding: '35px 25px',
+        padding: '24px 12px',
         fontFamily: 'Arial, sans-serif',
       }}
     >
-      <h1>Clasificación</h1>
-
-      <p>Yuba Sutter Adult Soccer League</p>
+      <h1 style={{ color: '#0b2341', marginBottom: '6px' }}>Clasificación</h1>
+      <p style={{ marginTop: 0, color: '#64748b', fontSize: '14px' }}>
+        Yuba Sutter Adult Soccer League
+      </p>
 
       {hayError && (
-        <p style={{ color: 'red' }}>
-          Error al cargar la clasificación.
-        </p>
+        <p style={{ color: 'red' }}>Error al cargar la clasificación.</p>
       )}
 
       {(divisiones || []).map((division) => {
@@ -175,90 +162,90 @@ export default async function Clasificacion() {
         const cupos = cantidadClasificados(clasificacion.length)
 
         return (
-          <section
-            key={division.id}
-            style={{ marginTop: '35px', marginBottom: '50px' }}
-          >
-            <h2>{division.nombre}</h2>
+          <section key={division.id} style={{ marginTop: '28px', marginBottom: '36px' }}>
+            <h2 style={{ color: '#0b2341', fontSize: '19px', marginBottom: '8px' }}>
+              {division.nombre}
+            </h2>
 
             {clasificacion.length === 0 ? (
               <p>No hay resultados registrados para esta división.</p>
             ) : (
               <>
                 {cupos > 0 && (
-                  <p style={{ fontSize: '14px', color: '#166534', margin: '8px 0 14px' }}>
+                  <p style={{ fontSize: '12px', color: '#166534', margin: '6px 0 10px' }}>
                     <span
                       aria-hidden="true"
                       style={{
                         display: 'inline-block',
-                        width: '13px',
-                        height: '13px',
+                        width: '11px',
+                        height: '11px',
                         background: '#dcfce7',
                         border: '1px solid #86b99a',
-                        borderRadius: '3px',
+                        borderRadius: '2px',
                         verticalAlign: 'middle',
-                        marginRight: '7px',
+                        marginRight: '6px',
                       }}
                     />
                     Verde claro: zona de liguilla (primeros {cupos} de {clasificacion.length} equipos).
                   </p>
                 )}
-                <div style={{ overflowX: 'auto' }}>
+
+                <div
+                  role="region"
+                  aria-label={`Tabla de clasificación de ${division.nombre}`}
+                  tabIndex={0}
+                  style={{
+                    width: '100%',
+                    overflowX: 'auto',
+                    WebkitOverflowScrolling: 'touch',
+                    border: '1px solid #dbe2ea',
+                    borderRadius: '7px',
+                  }}
+                >
                   <table
                     style={{
-                      borderCollapse: 'collapse',
                       width: '100%',
+                      minWidth: '640px',
+                      borderCollapse: 'collapse',
+                      tableLayout: 'auto',
                     }}
                   >
                     <thead>
                       <tr>
-                        <th style={celda}>#</th>
-                        <th style={equipoCelda}>Equipo</th>
-                        <th style={celda}>PJ</th>
-                        <th style={celda}>PG</th>
-                        <th style={celda}>PE</th>
-                        <th style={celda}>PP</th>
-                        <th style={celda}>GF</th>
-                        <th style={celda}>GC</th>
-                        <th style={celda}>DG</th>
-                        <th style={celda}>PTS</th>
+                        <th scope="col" style={{ ...encabezado, width: '35px' }}>#</th>
+                        <th scope="col" style={{ ...encabezado, textAlign: 'left', minWidth: '155px' }}>Equipo</th>
+                        <th scope="col" style={encabezado}>PTS</th>
+                        <th scope="col" style={encabezado}>PJ</th>
+                        <th scope="col" style={encabezado}>PG</th>
+                        <th scope="col" style={encabezado}>PE</th>
+                        <th scope="col" style={encabezado}>PP</th>
+                        <th scope="col" style={encabezado}>GF</th>
+                        <th scope="col" style={encabezado}>GC</th>
+                        <th scope="col" style={encabezado}>DG</th>
                       </tr>
                     </thead>
-
                     <tbody>
-                      {clasificacion.map((equipo, index) => (
-                        <tr
-                          key={equipo.equipo}
-                          style={{
-                            background: index < cupos
-                              ? '#dcfce7'
-                              : index % 2 ? '#f8fafc' : 'white',
-                          }}
-                        >
-                          <td style={celda}>{index + 1}</td>
-
-                          <td style={{ ...equipoCelda, fontWeight: 'bold' }}>
-                            {equipo.equipo}
-                          </td>
-
-                          <td style={celda}>{equipo.pj}</td>
-                          <td style={celda}>{equipo.pg}</td>
-                          <td style={celda}>{equipo.pe}</td>
-                          <td style={celda}>{equipo.pp}</td>
-                          <td style={celda}>{equipo.gf}</td>
-                          <td style={celda}>{equipo.gc}</td>
-                          <td style={celda}>{equipo.dg}</td>
-
-                          <td
-                            style={{
-                              ...celda,
-                              fontWeight: 'bold',
-                            }}
-                          >
-                            {equipo.pts}
-                          </td>
-                        </tr>
-                      ))}
+                      {clasificacion.map((equipo, index) => {
+                        const fondo = index < cupos
+                          ? '#dcfce7'
+                          : index % 2 === 0 ? '#ffffff' : '#f8fafc'
+                        return (
+                          <tr key={`${division.id}-${equipo.equipo}`} style={{ background: fondo }}>
+                            <td style={celda}>{index + 1}</td>
+                            <td style={{ ...celda, textAlign: 'left', fontWeight: 'bold' }}>
+                              {equipo.equipo}
+                            </td>
+                            <td style={{ ...celda, fontWeight: 'bold', color: '#0b2341' }}>{equipo.pts}</td>
+                            <td style={celda}>{equipo.pj}</td>
+                            <td style={celda}>{equipo.pg}</td>
+                            <td style={celda}>{equipo.pe}</td>
+                            <td style={celda}>{equipo.pp}</td>
+                            <td style={celda}>{equipo.gf}</td>
+                            <td style={celda}>{equipo.gc}</td>
+                            <td style={celda}>{equipo.dg > 0 ? `+${equipo.dg}` : equipo.dg}</td>
+                          </tr>
+                        )
+                      })}
                     </tbody>
                   </table>
                 </div>
