@@ -253,6 +253,35 @@ function EscudoEquipo({ nombre, divisionId, escudos, size = 48 }) {
   return <img src={url} alt={`Escudo de ${nombre}`} loading="lazy" style={{ width: size, height: size, objectFit: 'contain', flexShrink: 0 }} />
 }
 
+// Información comercial visible en la portada, igual que en Patrocinadores.
+function DetallesPatrocinador({ patrocinador }) {
+  const enlace = String(patrocinador.enlace || '').trim()
+  const url = enlace && !/^(javascript|data):/i.test(enlace)
+    ? (/^https?:\/\//i.test(enlace) ? enlace : `https://${enlace}`)
+    : null
+
+  return (
+    <div style={{ fontSize: '14px', lineHeight: 1.5, overflowWrap: 'anywhere' }}>
+      {patrocinador.telefono && (
+        <p style={{ margin: '5px 0' }}>Teléfono: {patrocinador.telefono}</p>
+      )}
+      {patrocinador.direccion && (
+        <p style={{ margin: '5px 0' }}>📍 {patrocinador.direccion}</p>
+      )}
+      {patrocinador.descripcion && (
+        <p style={{ margin: '5px 0' }}>{patrocinador.descripcion}</p>
+      )}
+      {url && (
+        <p style={{ margin: '8px 0 0' }}>
+          <a href={url} target="_blank" rel="noopener noreferrer" style={{ color: '#0b4a84' }}>
+            Visitar página
+          </a>
+        </p>
+      )}
+    </div>
+  )
+}
+
 export default async function Home() {
   const campeonesVigentes = await cargarCampeonesVigentes()
   const { data: escudosDatos, error: errorEscudos } = await supabase
@@ -284,21 +313,21 @@ export default async function Home() {
 
   const { data: patrocinadores, error: errorPatrocinadores } = await supabase
   .from('patrocinadores')
-  .select('id, nombre, enlace, imagen_url, fecha_inicio, fecha_fin')
+  .select('id, nombre, telefono, direccion, descripcion, enlace, imagen_url, fecha_inicio, fecha_fin')
   .eq('activo', true)
   .eq('tipo', 'principal')
   .order('nombre')
 
   const { data: destacados, error: errorDestacados } = await supabase
   .from('patrocinadores')
-  .select('id, nombre, enlace, imagen_url, fecha_inicio, fecha_fin')
+  .select('id, nombre, telefono, direccion, descripcion, enlace, imagen_url, fecha_inicio, fecha_fin')
   .eq('activo', true)
   .eq('tipo', 'destacado')
   .order('nombre')
 
   const { data: normales, error: errorNormales } = await supabase
   .from('patrocinadores')
-  .select('id, nombre, enlace, imagen_url, fecha_inicio, fecha_fin')
+  .select('id, nombre, telefono, direccion, descripcion, enlace, imagen_url, fecha_inicio, fecha_fin')
   .eq('activo', true)
   .eq('tipo', 'normal')
   .order('nombre')
@@ -633,6 +662,7 @@ justifyContent: 'center',
                 )}
 
                 <h3>{patrocinador.nombre}</h3>
+          <DetallesPatrocinador patrocinador={patrocinador} />
               </div>
             ))}
           </div>
@@ -677,6 +707,7 @@ justifyContent: 'center',
           )}
 
           <h3>{patrocinador.nombre}</h3>
+          <DetallesPatrocinador patrocinador={patrocinador} />
         </div>
       ))}
     </div>
@@ -726,6 +757,7 @@ justifyContent: 'center',
           )}
 
           <h3>{patrocinador.nombre}</h3>
+          <DetallesPatrocinador patrocinador={patrocinador} />
         </div>
       ))}
     </div>
