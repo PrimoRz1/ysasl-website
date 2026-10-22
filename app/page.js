@@ -350,6 +350,50 @@ export default async function Home() {
   }
   const partidosDestacados = elegirPartidosDestacados(partidos, clasificacion, divisiones, idsManuales)
 
+  // Líderes de goleo: misma fuente que /goleadores, sin modificar estadísticas.
+  const [respuestaGoles, respuestaJugadores, respuestaEquiposGoles] = await Promise.all([
+    supabase.from('eventos_partido').select('jugador_id,equipo_id,tipo').eq('tipo', 'gol'),
+    supabase.from('jugadores').select('id,nombre,equipo_id'),
+    supabase.from('equipos').select('id,nombre,division_id')
+  ])
+
+  const errorGoleadores = respuestaGoles.error || respuestaJugadores.error || respuestaEquiposGoles.error
+  if (errorGoleadores) console.error('No se pudieron cargar los líderes de goleo:', errorGoleadores.message)
+
+  const mapaJugadores = new Map((respuestaJugadores.data || []).map(j => [Number(j.id), j]))
+  const mapaEquiposGoles = new Map((respuestaEquiposGoles.data || []).map(e => [Number(e.id), e]))
+  const conteoGoles = new Map()
+
+  if (!errorGoleadores) {
+    for (const evento of respuestaGoles.data || []) {
+      const jugador = mapaJugadores.get(Number(evento.jugador_id))
+      const equipo = mapaEquiposGoles.get(Number(evento.equipo_id))
+      if (!jugador || !equipo) continue
+      const clave = `${jugador.id}-${equipo.id}`
+      const actual = conteoGoles.get(clave) || {
+        id: jugador.id,
+        nombre: jugador.nombre,
+        equipo: equipo.nombre,
+        division_id: equipo.division_id,
+        goles: 0
+      }
+      actual.goles += 1
+      conteoGoles.set(clave, actual)
+    }
+  }
+
+  const goleadoresOrdenados = [...conteoGoles.values()].sort((a, b) =>
+    b.goles - a.goles || a.nombre.localeCompare(b.nombre)
+  )
+  const divisionesGoleo = ['primera', 'segunda'].map(tipo => {
+    const division = (divisiones || []).find(d => tipoDivision(d.nombre) === tipo)
+    return {
+      tipo,
+      nombre: division?.nombre || (tipo === 'primera' ? 'Primera División' : 'Segunda División'),
+      lider: division ? goleadoresOrdenados.find(j => Number(j.division_id) === Number(division.id)) : null
+    }
+  })
+
   const hayError =
   errorDivisiones || errorClasificacion || errorPartidos || errorPatrocinadores || errorDestacados || errorNormales
 
@@ -413,6 +457,29 @@ export default async function Home() {
         ) : (
           <p style={{ padding: '15px', background: '#f3f4f6', borderRadius: '10px' }}>No hay partidos próximos programados por el momento.</p>
         )}
+      </section>
+
+      <section style={{ marginTop: '35px', marginBottom: '45px' }}>
+        <h2 style={{ marginBottom: '8px' }}>⚽ Líderes de Goleo</h2>
+        <p style={{ marginTop: 0, color: '#555' }}>Los máximos goleadores de cada división.</p>
+        <div style={{ display: 'grid', gridTemplateColumns: 'repeat(auto-fit, minmax(260px, 1fr))', gap: '18px', marginTop: '20px' }}>
+          {divisionesGoleo.map(({ tipo, nombre, lider }) => (
+            <article key={tipo} style={{ border: '1px solid #dbe3eb', borderRadius: '14px', padding: '22px', background: '#f8fafc', textAlign: 'center' }}>
+              <h3 style={{ margin: '0 0 16px', color: '#0b2341' }}>{nombre}</h3>
+              <div aria-label="Fotografía del jugador pendiente" style={{ width: '112px', height: '112px', borderRadius: '50%', margin: '0 auto 14px', background: '#e2e8f0', display: 'grid', placeItems: 'center', fontSize: '52px' }}>👤</div>
+              {lider ? (
+                <>
+                  <p style={{ fontSize: '20px', fontWeight: 'bold', margin: '0 0 6px', color: '#0b2341' }}>{lider.nombre}</p>
+                  <p style={{ margin: '0 0 10px', color: '#475569' }}>{lider.equipo}</p>
+                  <p style={{ fontSize: '26px', fontWeight: 'bold', margin: '0 0 16px', color: '#174d7a' }}>{lider.goles} {lider.goles === 1 ? 'gol' : 'goles'}</p>
+                </>
+              ) : (
+                <p style={{ color: '#64748b', margin: '0 0 18px' }}>{errorGoleadores ? 'Estadísticas no disponibles por el momento' : 'Sin goles registrados por el momento'}</p>
+              )}
+              <a href="/goleadores" style={{ color: '#0b4a84', fontWeight: 'bold', textDecoration: 'underline' }}>Ver todos los goleadores →</a>
+            </article>
+          ))}
+        </div>
       </section>
 
       <section style={{ marginTop: '35px', marginBottom: '45px' }}>
