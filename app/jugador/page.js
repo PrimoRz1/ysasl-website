@@ -14,6 +14,11 @@ export default function JugadorPage() {
   const router = useRouter()
 
   const [usuario, setUsuario] = useState(null)
+  const [jugadorVinculado, setJugadorVinculado] = useState(null)
+  const [fotoJugador, setFotoJugador] = useState('')
+  const [subiendoFoto, setSubiendoFoto] = useState(false)
+  const [mensajeFoto, setMensajeFoto] = useState('')
+  const [errorFoto, setErrorFoto] = useState('')
   const [equipos, setEquipos] = useState([])
   const [solicitudes, setSolicitudes] = useState([])
   const [equipoId, setEquipoId] = useState('')
@@ -68,7 +73,7 @@ export default function JugadorPage() {
               .order('nombre'),
             supabase
               .from('solicitudes_jugadores')
-              .select('id, equipo_id, estado, created_at')
+              .select('id, equipo_id, estado, jugador_id, created_at')
               .eq('usuario_id', user.id)
               .order('created_at', { ascending: false }),
             supabase
@@ -78,7 +83,7 @@ export default function JugadorPage() {
               .maybeSingle(),
             supabase
               .from('invitaciones_jugadores')
-              .select('id, equipo_id, estado, created_at')
+              .select('id, equipo_id, estado, jugador_id, created_at')
               .eq('jugador_usuario_id', user.id)
               .eq('estado', 'pendiente')
               .order('created_at', { ascending: false })
@@ -122,6 +127,25 @@ export default function JugadorPage() {
 
         setEquipos(listaEquipos)
         setSolicitudes(listaSolicitudes)
+
+        // La fotografía oficial solo corresponde a un jugador aprobado.
+        const aprobada = listaSolicitudes.find(s =>
+          s.estado === 'aprobada' && s.jugador_id != null
+        )
+        if (aprobada) {
+          const { data: ficha, error: errorFicha } = await supabase
+            .from('jugadores')
+            .select('id, foto_url')
+            .eq('id', aprobada.jugador_id)
+            .maybeSingle()
+          if (!activo) return
+          if (errorFicha) {
+            setErrorFoto('No se pudo cargar tu fotografía: ' + errorFicha.message)
+          } else if (ficha) {
+            setJugadorVinculado(ficha.id)
+            setFotoJugador(ficha.foto_url || '')
+          }
+        }
 
         // El registro por invitación guardó este dato en Supabase Auth.
         // Si no hay invitación, el jugador conserva el registro normal.
@@ -207,7 +231,7 @@ export default function JugadorPage() {
         const { data: solicitudesActualizadas, error: errorConsulta } =
           await supabase
             .from('solicitudes_jugadores')
-            .select('id, equipo_id, estado, created_at')
+            .select('id, equipo_id, estado, jugador_id, created_at')
             .eq('usuario_id', user.id)
             .order('created_at', { ascending: false })
 
@@ -328,7 +352,7 @@ export default function JugadorPage() {
 
       const { data, error: errorConsulta } = await supabase
         .from('solicitudes_jugadores')
-        .select('id, equipo_id, estado, created_at')
+        .select('id, equipo_id, estado, jugador_id, created_at')
         .eq('usuario_id', usuario.id)
         .order('created_at', { ascending: false })
 
@@ -373,7 +397,7 @@ export default function JugadorPage() {
       if (aceptar) {
         const { data, error: errorConsulta } = await supabase
           .from('solicitudes_jugadores')
-          .select('id, equipo_id, estado, created_at')
+          .select('id, equipo_id, estado, jugador_id, created_at')
           .eq('usuario_id', usuario.id)
           .order('created_at', { ascending: false })
         if (errorConsulta) {
@@ -459,6 +483,60 @@ export default function JugadorPage() {
     }
   }
 
+  async function subirMiFoto(e) {
+    const archivo = e.target.files?.[0]
+    // Permite volver a elegir el mismo archivo si hubo un error.
+    e.target.value = ''
+    if (!archivo || !usuario || !jugadorVinculado || subiendoFoto) return
+
+    setErrorFoto('')
+    setMensajeFoto('')
+    const tipos = {
+      'image/jpeg': 'jpg',
+      'image/png': 'png',
+      'image/webp': 'webp'
+    }
+    const extension = tipos[archivo.type]
+    if (!extension) {
+      setErrorFoto('Selecciona una imagen JPG, PNG o WebP.')
+      return
+    }
+    if (archivo.size > 2 * 1024 * 1024 || archivo.size === 0) {
+      setErrorFoto('La fotografía debe pesar menos de 2 MB.')
+      return
+    }
+
+    setSubiendoFoto(true)
+    let ruta = null
+    try {
+      ruta = `${usuario.id}/${crypto.randomUUID()}.${extension}`
+      const { error: errorSubida } = await supabase.storage
+        .from('fotos-jugadores')
+        .upload(ruta, archivo, { contentType: archivo.type, upsert: false })
+      if (errorSubida) throw errorSubida
+
+      const { data } = supabase.storage
+        .from('fotos-jugadores')
+        .getPublicUrl(ruta)
+      if (!data?.publicUrl) throw new Error('No se pudo obtener la URL de la foto.')
+
+      const { error: errorVincular } = await supabase.rpc(
+        'actualizar_mi_foto',
+        { p_foto_url: data.publicUrl }
+      )
+      if (errorVincular) throw errorVincular
+
+      setFotoJugador(data.publicUrl)
+      setMensajeFoto('¡Fotografía actualizada correctamente!')
+    } catch (err) {
+      // Si la foto no se pudo vincular, limpiamos el archivo recién subido.
+      if (ruta) await supabase.storage.from('fotos-jugadores').remove([ruta])
+      setErrorFoto('No se pudo guardar tu fotografía: ' + (err.message || 'Error desconocido.'))
+    } finally {
+      setSubiendoFoto(false)
+    }
+  }
+
   async function cerrarSesion() {
     const { error: errorSalida } = await supabase.auth.signOut()
 
@@ -518,6 +596,53 @@ export default function JugadorPage() {
       </div>
 
       <hr style={{ margin: '30px 0' }} />
+
+      <section style={{
+        padding: '20px',
+        border: '1px solid #cbd5e1',
+        borderRadius: '10px',
+        marginBottom: '30px',
+        background: '#f8fafc'
+      }}>
+        <h2 style={{ marginTop: 0 }}>📸 Mi fotografía de jugador</h2>
+        {jugadorVinculado ? (
+          <>
+            {fotoJugador ? (
+              <img
+                src={fotoJugador}
+                alt="Mi fotografía de jugador"
+                width={140}
+                height={140}
+                style={{ objectFit: 'cover', borderRadius: '50%', display: 'block', marginBottom: '15px' }}
+              />
+            ) : (
+              <p>Aún no has agregado una fotografía.</p>
+            )}
+            <p style={{ color: '#475569' }}>
+              Esta fotografía será pública en tu ficha y podrá aparecer en Líderes de Goleo.
+            </p>
+            <label htmlFor="foto-jugador" style={{ display: 'block', marginBottom: '8px', fontWeight: 'bold' }}>
+              {fotoJugador ? 'Cambiar mi fotografía' : 'Subir mi fotografía'}
+            </label>
+            <input
+              id="foto-jugador"
+              type="file"
+              accept="image/jpeg,image/png,image/webp"
+              onChange={subirMiFoto}
+              disabled={subiendoFoto}
+            />
+            <p style={{ fontSize: '13px', color: '#64748b' }}>JPG, PNG o WebP. Máximo 2 MB.</p>
+            {subiendoFoto && <p role="status">Subiendo fotografía...</p>}
+            {mensajeFoto && <p role="status" style={{ color: '#166534' }}>{mensajeFoto}</p>}
+            {errorFoto && <p role="alert" style={{ color: '#b91c1c' }}>{errorFoto}</p>}
+          </>
+        ) : (
+          <p>
+            Podrás subir tu fotografía oficial cuando el delegado apruebe tu solicitud
+            y tu cuenta esté vinculada a un jugador de la plantilla.
+          </p>
+        )}
+      </section>
 
       {equipoInvitadoNombre && (
         <div style={{
