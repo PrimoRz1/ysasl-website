@@ -83,7 +83,7 @@ export default function JugadorPage() {
               .maybeSingle(),
             supabase
               .from('invitaciones_jugadores')
-              .select('id, equipo_id, estado, jugador_id, created_at')
+              .select('id, equipo_id, estado, created_at')
               .eq('jugador_usuario_id', user.id)
               .eq('estado', 'pendiente')
               .order('created_at', { ascending: false })
