@@ -1,3 +1,4 @@
+
 import { supabase } from '../../lib/supabase'
 
 export const dynamic = 'force-dynamic'
@@ -9,16 +10,15 @@ export default async function PatrocinadoresPage() {
     .eq('activo', true)
     .order('nombre')
 
-  if (error) {
-    console.error(error)
-  }
+  if (error) console.error('Error cargando patrocinadores:', error)
 
   const hoy = new Date().toISOString().split('T')[0]
 
   const activos = (patrocinadores || []).filter((p) => {
-    const inicioValido = !p.fecha_inicio || p.fecha_inicio <= hoy
-    const finValido = !p.fecha_fin || p.fecha_fin >= hoy
-    return inicioValido && finValido
+    return (
+      (!p.fecha_inicio || p.fecha_inicio <= hoy) &&
+      (!p.fecha_fin || p.fecha_fin >= hoy)
+    )
   })
 
   const principales = activos.filter((p) => p.tipo === 'principal')
@@ -28,155 +28,158 @@ export default async function PatrocinadoresPage() {
   )
 
   function Tarjeta({ patrocinador, nivel }) {
-    const esPrincipal = nivel === 'principal'
-    const esDestacado = nivel === 'destacado'
+    const principal = nivel === 'principal'
+    const destacado = nivel === 'destacado'
 
     return (
-      <div
-        style={{
-          border: esPrincipal ? '2px solid #0b2341' : '1px solid #ddd',
-          borderRadius: '14px',
-          padding: esPrincipal ? '30px' : '22px',
-          textAlign: 'center',
-          background: '#fff',
-          boxShadow: esPrincipal
-            ? '0 4px 14px rgba(0,0,0,0.12)'
-            : '0 2px 6px rgba(0,0,0,0.06)'
-        }}
-      >
+      <article style={{
+        border: principal ? '2px solid #0b2948' : '1px solid #ddd',
+        borderRadius: '12px',
+        background: '#fff',
+        padding: '20px',
+        textAlign: 'center',
+        boxShadow: principal
+          ? '0 4px 12px rgba(0,0,0,0.1)'
+          : '0 2px 6px rgba(0,0,0,0.05)'
+      }}>
         {patrocinador.imagen_url && (
-          <div
+          <img
+            src={patrocinador.imagen_url}
+            alt={`Logotipo de ${patrocinador.nombre}`}
             style={{
-              height: esPrincipal ? '190px' : esDestacado ? '150px' : '120px',
-              display: 'flex',
-              alignItems: 'center',
-              justifyContent: 'center',
-              marginBottom: '15px'
+              display: 'block',
+              width: '100%',
+              maxWidth: principal ? '240px' : destacado ? '190px' : '150px',
+              height: principal ? '130px' : destacado ? '110px' : '90px',
+              objectFit: 'contain',
+              margin: '0 auto 12px'
             }}
-          >
-            <img
-              src={patrocinador.imagen_url}
-              alt={patrocinador.nombre}
-              style={{
-                maxWidth: esPrincipal ? '280px' : esDestacado ? '220px' : '180px',
-                maxHeight: esPrincipal ? '180px' : esDestacado ? '140px' : '110px',
-                objectFit: 'contain'
-              }}
-            />
-          </div>
+          />
         )}
 
-        <h2
-          style={{
-            fontSize: esPrincipal ? '26px' : esDestacado ? '22px' : '19px',
-            margin: '8px 0'
-          }}
-        >
+        <h3 style={{
+          fontSize: principal ? '23px' : destacado ? '20px' : '18px',
+          margin: '8px 0'
+        }}>
           {patrocinador.nombre}
-        </h2>
+        </h3>
 
         {patrocinador.telefono && (
-          <p>Teléfono: {patrocinador.telefono}</p>
+          <p style={{ margin: '6px 0', fontSize: '14px' }}>
+            📞 <a href={`tel:${patrocinador.telefono.replace(/[^\d+]/g, '')}`}>
+              {patrocinador.telefono}
+            </a>
+          </p>
         )}
-{patrocinador.direccion && (
-  <p style={{ fontSize: '14px', margin: '6px 0' }}>
-    📍 {patrocinador.direccion}
-  </p>
-)}
 
-{patrocinador.descripcion && (
-  <p style={{ fontSize: '14px', margin: '6px 0' }}>
-    {patrocinador.descripcion}
-  </p>
-)}
+        {patrocinador.direccion && (
+          <p style={{ margin: '6px 0', fontSize: '14px' }}>
+            📍 {patrocinador.direccion}
+          </p>
+        )}
+
+        {patrocinador.descripcion && (
+          <p style={{
+            margin: '10px auto',
+            fontSize: '14px',
+            lineHeight: '1.5',
+            maxWidth: '450px'
+          }}>
+            {patrocinador.descripcion}
+          </p>
+        )}
 
         {patrocinador.enlace && (
           <a
             href={patrocinador.enlace}
             target="_blank"
             rel="noopener noreferrer"
+            style={{
+              display: 'inline-block',
+              marginTop: '10px',
+              padding: '9px 16px',
+              background: '#0b2948',
+              color: '#fff',
+              borderRadius: '6px',
+              textDecoration: 'none',
+              fontWeight: 'bold',
+              fontSize: '13px'
+            }}
           >
-            Visitar página
+            Visitar negocio
           </a>
         )}
-      </div>
+      </article>
+    )
+  }
+
+  function Seccion({ titulo, lista, nivel, ancho }) {
+    if (lista.length === 0) return null
+
+    return (
+      <section style={{ marginBottom: '36px' }}>
+        <h2 style={{
+          textAlign: 'center',
+          marginBottom: '20px',
+          fontSize: '22px'
+        }}>
+          {titulo}
+        </h2>
+
+        <div style={{
+          display: 'grid',
+          gridTemplateColumns: `repeat(auto-fit, minmax(min(100%, ${ancho}px), 1fr))`,
+          gap: '20px'
+        }}>
+          {lista.map((p) => (
+            <Tarjeta
+              key={p.id}
+              patrocinador={p}
+              nivel={nivel}
+            />
+          ))}
+        </div>
+      </section>
     )
   }
 
   return (
-    <main
-      style={{
-        maxWidth: '1100px',
-        margin: '0 auto',
-        padding: '40px 20px'
-      }}
-    >
-      <div style={{ textAlign: 'center', marginBottom: '40px' }}>
+    <main style={{
+      maxWidth: '1100px',
+      margin: '0 auto',
+      padding: '30px 20px'
+    }}>
+      <header style={{
+        textAlign: 'center',
+        marginBottom: '32px'
+      }}>
         <h1>Patrocinadores</h1>
         <p>
-          Gracias a los negocios que apoyan a Yuba Sutter Adult Soccer League.
+          Gracias a los negocios que apoyan a
+          Yuba Sutter Adult Soccer League.
         </p>
-      </div>
+      </header>
 
-      {principales.length > 0 && (
-        <section style={{ marginBottom: '45px' }}>
-          <h2 style={{ textAlign: 'center', marginBottom: '20px' }}>
-            Patrocinadores Principales
-          </h2>
+      <Seccion
+        titulo="Patrocinadores Principales"
+        lista={principales}
+        nivel="principal"
+        ancho={320}
+      />
 
-          <div
-            style={{
-              display: 'grid',
-              gridTemplateColumns: 'repeat(auto-fit, minmax(320px, 1fr))',
-              gap: '24px'
-            }}
-          >
-            {principales.map((p) => (
-              <Tarjeta key={p.id} patrocinador={p} nivel="principal" />
-            ))}
-          </div>
-        </section>
-      )}
+      <Seccion
+        titulo="Patrocinadores Destacados"
+        lista={destacados}
+        nivel="destacado"
+        ancho={260}
+      />
 
-      {destacados.length > 0 && (
-        <section style={{ marginBottom: '45px' }}>
-          <h2 style={{ textAlign: 'center', marginBottom: '20px' }}>
-            Patrocinadores Destacados
-          </h2>
-
-          <div
-            style={{
-              display: 'grid',
-              gridTemplateColumns: 'repeat(auto-fit, minmax(260px, 1fr))',
-              gap: '20px'
-            }}
-          >
-            {destacados.map((p) => (
-              <Tarjeta key={p.id} patrocinador={p} nivel="destacado" />
-            ))}
-          </div>
-        </section>
-      )}
-
-      {normales.length > 0 && (
-        <section>
-          <h2 style={{ textAlign: 'center', marginBottom: '20px' }}>
-            Patrocinadores
-          </h2>
-
-          <div
-            style={{
-              display: 'grid',
-              gridTemplateColumns: 'repeat(auto-fit, minmax(220px, 1fr))',
-              gap: '18px'
-            }}
-          >
-            {normales.map((p) => (
-              <Tarjeta key={p.id} patrocinador={p} nivel="normal" />
-            ))}
-          </div>
-        </section>
-      )}
+      <Seccion
+        titulo="Patrocinadores"
+        lista={normales}
+        nivel="normal"
+        ancho={220}
+      />
 
       {activos.length === 0 && (
         <p style={{ textAlign: 'center' }}>
