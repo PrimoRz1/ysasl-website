@@ -53,24 +53,39 @@ function fechaYHora(partido) {
   return `${partido.fecha || '9999-12-31'} ${partido.hora || '23:59'}`
 }
 
+// Separar por fase evita mezclar liguilla y temporada regular si comparten jornada.
+const TITULOS_LIGUILLA = {
+  cuartos: 'Cuartos de final',
+  repechaje: 'Reclasificación',
+  semifinal: 'Semifinales',
+  final: 'Gran final',
+  tercer_lugar: 'Tercer lugar'
+}
+
+function tituloJornada(grupo) {
+  return TITULOS_LIGUILLA[grupo.fase] || `Jornada ${grupo.jornada}`
+}
+
 function agruparPorJornada(partidos, orden = 'ascendente') {
   const grupos = new Map()
   for (const partido of partidos) {
     const jornada = partido.jornada ?? 'Pendiente'
-    if (!grupos.has(jornada)) grupos.set(jornada, [])
-    grupos.get(jornada).push(partido)
+    const fase = TITULOS_LIGUILLA[partido.fase] ? partido.fase : 'regular'
+    const clave = `${fase}:${jornada}`
+    if (!grupos.has(clave)) grupos.set(clave, { jornada, fase, juegos: [] })
+    grupos.get(clave).juegos.push(partido)
   }
 
-  const lista = [...grupos].map(([jornada, juegos]) => ({
-    jornada,
-    juegos: [...juegos].sort((a, b) => fechaYHora(a).localeCompare(fechaYHora(b)))
+  const lista = [...grupos.values()].map((grupo) => ({
+    ...grupo,
+    juegos: [...grupo.juegos].sort((a, b) => fechaYHora(a).localeCompare(fechaYHora(b)))
   }))
 
   if (orden === 'descendente') {
     return lista.sort((a, b) => {
       const jornadaA = Number(a.jornada)
       const jornadaB = Number(b.jornada)
-      if (Number.isFinite(jornadaA) && Number.isFinite(jornadaB)) {
+      if (Number.isFinite(jornadaA) && Number.isFinite(jornadaB) && jornadaA !== jornadaB) {
         return jornadaB - jornadaA
       }
       return fechaYHora(b.juegos[b.juegos.length - 1])
@@ -172,8 +187,8 @@ function SeccionJornadas({ titulo, descripcion, partidos, orden, escudos }) {
       <h2>{titulo}</h2>
       {descripcion && <p style={{ color: '#555' }}>{descripcion}</p>}
       {grupos.map((grupo) => (
-        <div key={String(grupo.jornada)} style={{ marginBottom: '32px' }}>
-          <h3>Jornada {grupo.jornada}</h3>
+        <div key={`${grupo.fase}:${grupo.jornada}`} style={{ marginBottom: '32px' }}>
+          <h3>{tituloJornada(grupo)}</h3>
           <TablaJornada partidos={grupo.juegos} escudos={escudos} />
         </div>
       ))}
@@ -233,6 +248,24 @@ export default function Calendario() {
           if (lote.length < 500) break
         }
 
+        // La vista calendario_partidos no expone la fase; consultamos únicamente
+        // las fases de liguilla por ID para mostrar títulos correctos en cualquier división.
+        // Si la consulta falla, el calendario sigue mostrando las jornadas habituales.
+        const fasesLiguilla = ['cuartos', 'repechaje', 'semifinal', 'final', 'tercer_lugar']
+        const respuestaFases = await supabase.from('partidos')
+          .select('id,fase')
+          .in('fase', fasesLiguilla)
+        if (respuestaFases.error) {
+          console.error('No se pudieron cargar las fases de liguilla:', respuestaFases.error.message)
+        }
+        const fasesPorId = new Map((respuestaFases.data || []).map(
+          (p) => [Number(p.id), p.fase]
+        ))
+        const partidosConFase = partidosCargados.map((p) => ({
+          ...p,
+          fase: fasesPorId.get(Number(p.id)) || 'regular'
+        }))
+
         // Los escudos son opcionales: si falla su consulta, el calendario sigue funcionando.
         const respuestaEscudos = await supabase.from('equipos').select('*')
         if (respuestaEscudos.error) {
@@ -263,7 +296,7 @@ export default function Calendario() {
         if (activo) {
           setTemporadas(temporadasOficiales)
           setDivisiones(divisionesOficiales)
-          setPartidos(partidosCargados)
+          setPartidos(partidosConFase)
           setEscudos(respuestaEscudos.data || [])
           setTemporadaId(temporadaInicial ? String(temporadaInicial.id) : '')
           setDivisionId(divisionInicial ? String(divisionInicial.id) : '')
