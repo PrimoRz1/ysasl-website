@@ -297,7 +297,18 @@ async function obtenerDatos(divisionSolicitada) {
   return { division, eliminatorias, equiposPorId, camposPorId, camposVista, tabla }
 }
 
-export default async function LiguillaCuadro({ division = 'segunda', compacto = false }) {
+// En la portada mostramos AMBAS divisiones con sus cuadros independientes.
+// Si alguna todavía no ha iniciado la liguilla, el modo compacto la oculta.
+// La página /liguilla sigue pudiendo pedir una sola división como antes.
+export default async function LiguillaCuadro({ division = 'ambas', compacto = false }) {
+  if (division === 'ambas') {
+    return (
+      <>
+        <LiguillaCuadro division="primera" compacto={compacto} />
+        <LiguillaCuadro division="segunda" compacto={compacto} />
+      </>
+    )
+  }
   let datos
   try {
     datos = await obtenerDatos(division === 'primera' ? 'primera' : 'segunda')
@@ -352,7 +363,7 @@ export default async function LiguillaCuadro({ division = 'segunda', compacto = 
           <h2>🏆 Camino al campeonato</h2>
           <p>{datos.division.nombre} · Verano / Invierno 2026</p>
         </div>
-        {compacto && <a className="ysasl-ll-enlace" href="/liguilla?division=segunda">Ver cuadro completo →</a>}
+        {compacto && <a className="ysasl-ll-enlace" href={`/liguilla?division=${division}&divisionId=${datos.division.id}`}>Ver cuadro completo →</a>}
       </div>
       {sinLiguilla ? (
         <div className="ysasl-ll-vacio">Todavía no hay partidos de liguilla guardados oficialmente para esta división.</div>
@@ -376,7 +387,7 @@ export default async function LiguillaCuadro({ division = 'segunda', compacto = 
               ))}
             </div>
           </div>
-          {!compacto && cuadro.tercero && (
+          {cuadro.tercero && (
             <div className="ysasl-ll-tercero">
               <h3>🥉 Partido por el tercer lugar</h3>
               <TarjetaPartido duelo={cuadro.tercero}
