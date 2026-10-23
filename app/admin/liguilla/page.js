@@ -4,12 +4,12 @@ import { useEffect, useMemo, useState } from 'react'
 import { useRouter } from 'next/navigation'
 import { supabase } from '../../../lib/supabase'
 
-// YSASL: liguilla oficial 2026. Preparación habilitada, guardado todavía bloqueado.
-// IMPORTANTE: habilitar el guardado SOLO después de instalar y verificar las RPC oficiales
-// con autorización de administrador, validaciones y transacciones en Supabase.
+// YSASL: liguilla oficial 2026. Guardado habilitado tras instalar las RPC oficiales.
+// Las RPC de guardado se instalaron en Supabase y usan permisos de administrador,
+// validaciones y transacciones; el servidor vuelve a verificar antes de insertar.
 const TEMPORADA_OFICIAL = 1
 const DIVISIONES_OFICIALES = [1, 2]
-const GUARDADO_OFICIAL_HABILITADO = false
+const GUARDADO_OFICIAL_HABILITADO = true
 const caja = { border: '1px solid #d5dbe2', borderRadius: 10, padding: 18, marginTop: 18 }
 const selector = { padding: 10, width: '100%', maxWidth: 580, marginTop: 6 }
 
@@ -814,7 +814,7 @@ export default function AdminLiguillaPage() {
   async function guardarPartidosLiguilla() {
     if (!GUARDADO_OFICIAL_HABILITADO || !listoParaGuardar || !esTemporadaOficial ||
       !DIVISIONES_OFICIALES.includes(Number(divisionId))) {
-      setErrorBorrador('El guardado oficial está bloqueado hasta instalar y verificar las funciones SQL seguras en Supabase.')
+      setErrorBorrador('No se puede guardar todavía: revisa la programación y sus validaciones.')
       return
     }
     const esFinales = tipoBorrador === 'finales'
@@ -864,7 +864,7 @@ export default function AdminLiguillaPage() {
       </button>
       <h1>Administrar liguilla</h1>
       <p>Consulta las clasificaciones y prepara los cruces de la liguilla oficial de <strong>Verano / Invierno 2026</strong>.</p>
-      <p><strong>Etapa actual:</strong> puedes preparar y asignar campos y horarios. El guardado en Supabase permanece deshabilitado hasta instalar la validación oficial del servidor.</p>
+      <p><strong>Etapa actual:</strong> puedes preparar, asignar campos y horarios y guardar los partidos oficialmente. Supabase volverá a validar permisos, cruces y conflictos antes de guardarlos.</p>
 
       <div style={caja}>
         <label htmlFor="temporada"><strong>Temporada</strong></label><br />
@@ -1013,7 +1013,7 @@ export default function AdminLiguillaPage() {
           </p>}
           {mostrarBorrador && <p style={{ color: listoParaConfirmar ? '#166534' : '#b45309', fontWeight: 'bold' }}>
             {listoParaConfirmar
-              ? '✓ Programación revisada y sin conflictos. Falta habilitar el guardado oficial.'
+              ? '✓ Programación revisada y sin conflictos. Lista para guardar oficialmente.'
               : '⚠ Revisa resultados, horarios, campos y conflictos de la programación.'}
           </p>}
           {errorBorrador && <p style={{ color: '#b42318' }}>{errorBorrador}</p>}
@@ -1065,7 +1065,7 @@ export default function AdminLiguillaPage() {
             <p style={{ color: '#9a6700' }}><strong>Importante:</strong> estas verificaciones son preliminares. El servidor deberá volver a validar fechas, horarios, campos, permisos y partidos antes de guardar.</p>
           </>}
         </div>}
-        <p style={{ marginTop: 25 }}><strong>Protección:</strong> los partidos y resultados oficiales no se modifican desde esta pantalla hasta activar las funciones SQL oficiales verificadas.</p>
+        <p style={{ marginTop: 25 }}><strong>Protección:</strong> el guardado crea nuevos partidos y su jornada, sin cambiar los marcadores oficiales anteriores. Supabase verifica nuevamente permisos, cruces, campos y horarios antes de insertar.</p>
       </>}
     </main>
   )
