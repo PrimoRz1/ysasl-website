@@ -134,7 +134,10 @@ function crearCuadro(tabla, eliminatorias) {
       return crearDuelo(partido, localId, visitanteId, `Ganador cuarto ${a + 1}`, `Ganador cuarto ${b + 1}`, `Semifinal ${i + 1}`)
     })
   } else if (cantidad === 6) {
-    const repechaje = [[3, 6], [4, 5]].map(([a, b], i) => {
+    // Orden visual: 4.º vs 5.º arriba (alimenta semifinal 1),
+    // y 3.º vs 6.º abajo (alimenta semifinal 2).
+    // No cambia resultados ni partidos: solo alinea las llaves en pantalla.
+    const repechaje = [[4, 5], [3, 6]].map(([a, b], i) => {
       const localId = porSembrado(a)
       const visitanteId = porSembrado(b)
       const partido = encontrarCruce(eliminatorias, 'repechaje', localId, visitanteId)
@@ -143,12 +146,12 @@ function crearCuadro(tabla, eliminatorias) {
     rondas.push({ nombre: 'Reclasificación', duelos: repechaje })
     semisConstruidas = [
       crearDuelo(
-        encontrarCruce(semis, 'semifinal', porSembrado(1), nombreGanador(repechaje[1].partido)),
-        porSembrado(1), nombreGanador(repechaje[1].partido), '1.º (pase directo)', 'Ganador 4.º vs 5.º', 'Semifinal 1',
+        encontrarCruce(semis, 'semifinal', porSembrado(1), nombreGanador(repechaje[0].partido)),
+        porSembrado(1), nombreGanador(repechaje[0].partido), '1.º (pase directo)', 'Ganador 4.º vs 5.º', 'Semifinal 1',
       ),
       crearDuelo(
-        encontrarCruce(semis, 'semifinal', porSembrado(2), nombreGanador(repechaje[0].partido)),
-        porSembrado(2), nombreGanador(repechaje[0].partido), '2.º (pase directo)', 'Ganador 3.º vs 6.º', 'Semifinal 2',
+        encontrarCruce(semis, 'semifinal', porSembrado(2), nombreGanador(repechaje[1].partido)),
+        porSembrado(2), nombreGanador(repechaje[1].partido), '2.º (pase directo)', 'Ganador 3.º vs 6.º', 'Semifinal 2',
       ),
     ]
   } else if (cantidad === 4) {
