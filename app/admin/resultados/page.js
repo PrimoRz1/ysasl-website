@@ -9,6 +9,7 @@ export default function AdminResultadosPage() {
   const [mensaje, setMensaje] = useState('')
   const [guardandoId, setGuardandoId] = useState(null)
   const [goles, setGoles] = useState({})
+  const [penales, setPenales] = useState({})
 const [jugadores, setJugadores] = useState([])
   const [equipos, setEquipos] = useState([])
 const [goleadores, setGoleadores] = useState({})
@@ -44,7 +45,7 @@ const [jornadaId, setJornadaId] = useState('')
       // Consultar SOLO LECTURA en partidos para mostrar la fase oficial,
       // sin modificar los resultados, tarjetas ni eventos de los encuentros.
       const partidosVista = data || []
-      const fasesPorId = new Map()
+      const datosOficialesPorId = new Map()
       let errorFases = null
 
       // Consultas pequeñas para no exceder los límites de la API.
@@ -52,7 +53,7 @@ const [jornadaId, setJornadaId] = useState('')
         const ids = partidosVista.slice(inicio, inicio + 200).map((p) => p.id)
         const respuesta = await supabase
           .from('partidos')
-          .select('id,fase')
+          .select('id,fase,penales_local,penales_visitante')
           .in('id', ids)
 
         if (respuesta.error) {
@@ -60,7 +61,7 @@ const [jornadaId, setJornadaId] = useState('')
           break
         }
         for (const fila of respuesta.data || []) {
-          fasesPorId.set(Number(fila.id), fila.fase)
+          datosOficialesPorId.set(Number(fila.id), fila)
         }
       }
 
@@ -69,12 +70,28 @@ const [jornadaId, setJornadaId] = useState('')
         setMensaje('No se pudieron consultar las fases oficiales. Los resultados siguen disponibles, pero algunas etiquetas pueden mostrar Jornada.')
       }
 
-      const partidosConFase = partidosVista.map((partido) => ({
-        ...partido,
-        fase: fasesPorId.get(Number(partido.id)) ?? partido.fase ?? null,
-      }))
+      const partidosConFase = partidosVista.map((partido) => {
+        const oficial = datosOficialesPorId.get(Number(partido.id))
+        return {
+          ...partido,
+          fase: oficial?.fase ?? partido.fase ?? null,
+          penales_local: oficial ? oficial.penales_local : (partido.penales_local ?? null),
+          penales_visitante: oficial ? oficial.penales_visitante : (partido.penales_visitante ?? null),
+        }
+      })
 
       setPartidos(partidosConFase)
+      setPenales(
+        Object.fromEntries(
+          partidosConFase.map((partido) => [
+            partido.id,
+            {
+              local: partido.penales_local ?? '',
+              visitante: partido.penales_visitante ?? '',
+            },
+          ])
+        )
+      )
       setGoles(
         Object.fromEntries(
           partidosConFase.map((partido) => [
@@ -217,6 +234,24 @@ const [jornadaId, setJornadaId] = useState('')
       : `Jornada ${numero}`
   }
 
+  // Solo en la gran final y tercer lugar se usan penales si hay empate.
+  // En cuartos, reclasificación y semifinales avanza el mejor clasificado.
+  function requierePenales(partido) {
+    return ['final', 'tercer_lugar']
+      .includes(String(partido.fase || '').toLowerCase())
+  }
+
+  function cambiarPenales(partidoId, tipo, valor) {
+    if (valor !== '' && !/^\d+$/.test(valor)) return
+    setPenales((actual) => ({
+      ...actual,
+      [partidoId]: {
+        ...(actual[partidoId] || {}),
+        [tipo]: valor,
+      },
+    }))
+  }
+
   function cambiarGol(partidoId, tipo, valor) {
     if (valor !== '' && Number(valor) < 0) return
 
@@ -244,16 +279,52 @@ const [jornadaId, setJornadaId] = useState('')
       return
     }
 
+    const gl = Number(golesLocal)
+    const gv = Number(golesVisitante)
+    if (![gl, gv].every((n) => Number.isSafeInteger(n) && n >= 0)) {
+      setMensaje('Los goles deben ser números enteros mayores o iguales a cero.')
+      return
+    }
+
+    const resultadoOficial = {
+      goles_local: gl,
+      goles_visitante: gv,
+      estado: 'finalizado',
+    }
+
+    if (requierePenales(partido)) {
+      if (gl === gv) {
+        const tanda = penales[partido.id] || {}
+        const pl = tanda.local
+        const pv = tanda.visitante
+        if (pl === '' || pv === '' || pl == null || pv == null) {
+          setMensaje('El partido terminó empatado. Captura los penales de ambos equipos antes de guardar.')
+          return
+        }
+        const penalesLocal = Number(pl)
+        const penalesVisitante = Number(pv)
+        if (![penalesLocal, penalesVisitante].every((n) => Number.isSafeInteger(n) && n >= 0) ||
+            penalesLocal === penalesVisitante) {
+          setMensaje('Los penales deben ser números enteros válidos y debe haber un ganador.')
+          return
+        }
+        resultadoOficial.penales_local = penalesLocal
+        resultadoOficial.penales_visitante = penalesVisitante
+      } else {
+        // Si se corrige un empate anterior a victoria en tiempo regular,
+        // eliminar únicamente los penales obsoletos de este partido.
+        resultadoOficial.penales_local = null
+        resultadoOficial.penales_visitante = null
+      }
+    }
+
     setGuardandoId(partido.id)
     setMensaje('')
 
+    // Marcador y penales se guardan juntos, sin modificar otras columnas.
     const { error } = await supabase
       .from('partidos')
-      .update({
-        goles_local: Number(golesLocal),
-        goles_visitante: Number(golesVisitante),
-        estado: 'finalizado',
-      })
+      .update(resultadoOficial)
       .eq('id', partido.id)
 
     if (error) {
@@ -801,6 +872,53 @@ function agregarGoleador(partido, equipoId) {
                 />
 
                 <strong>{partido.visitante}</strong>
+
+                {String(partido.fase || '').toLowerCase() === 'semifinal' && (
+                  <p style={{ flexBasis: '100%', margin: '4px 0', color: '#645217', fontSize: '13px' }}>
+                    Si hay empate en semifinales, avanza el equipo mejor clasificado en la temporada regular (sin penales).
+                  </p>
+                )}
+
+                {requierePenales(partido) &&
+                  goles[partido.id]?.local !== '' &&
+                  goles[partido.id]?.visitante !== '' &&
+                  goles[partido.id]?.local != null &&
+                  goles[partido.id]?.visitante != null &&
+                  Number(goles[partido.id]?.local) === Number(goles[partido.id]?.visitante) && (
+                    <div style={{ flexBasis: '100%', padding: '12px', background: '#fff8e6', border: '1px solid #e6c56d', borderRadius: '8px' }}>
+                      <strong>🥅 Desempate por penales (obligatorio si hay empate)</strong>
+                      <p style={{ margin: '6px 0 10px', fontSize: '13px' }}>
+                        Registra la tanda completa. Debe haber un ganador para avanzar a la siguiente ronda.
+                      </p>
+                      <div style={{ display: 'flex', alignItems: 'center', gap: '12px', flexWrap: 'wrap' }}>
+                        <label>
+                          {partido.local}:{' '}
+                          <input
+                            type="number"
+                            min="0"
+                            step="1"
+                            aria-label={`Penales de ${partido.local}`}
+                            value={penales[partido.id]?.local ?? ''}
+                            onChange={(e) => cambiarPenales(partido.id, 'local', e.target.value)}
+                            style={{ width: '70px', padding: '8px', fontSize: '16px' }}
+                          />
+                        </label>
+                        <span>–</span>
+                        <label>
+                          {partido.visitante}:{' '}
+                          <input
+                            type="number"
+                            min="0"
+                            step="1"
+                            aria-label={`Penales de ${partido.visitante}`}
+                            value={penales[partido.id]?.visitante ?? ''}
+                            onChange={(e) => cambiarPenales(partido.id, 'visitante', e.target.value)}
+                            style={{ width: '70px', padding: '8px', fontSize: '16px' }}
+                          />
+                        </label>
+                      </div>
+                    </div>
+                  )}
 
                 <div style={{ marginTop: '15px', marginBottom: '15px' }}>
   <strong>Goleadores:</strong>
