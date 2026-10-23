@@ -19,6 +19,8 @@ export default function JugadorPage() {
   const [subiendoFoto, setSubiendoFoto] = useState(false)
   const [mensajeFoto, setMensajeFoto] = useState('')
   const [errorFoto, setErrorFoto] = useState('')
+  const [quitarFondo, setQuitarFondo] = useState(false)
+  const [quitarFondoDisponible, setQuitarFondoDisponible] = useState(false)
   const [equipos, setEquipos] = useState([])
   const [solicitudes, setSolicitudes] = useState([])
   const [equipoId, setEquipoId] = useState('')
@@ -46,6 +48,16 @@ export default function JugadorPage() {
   const [procesandoInvitacion, setProcesandoInvitacion] = useState(null)
   const [mensajeInvitacion, setMensajeInvitacion] = useState('')
   const [errorInvitacion, setErrorInvitacion] = useState('')
+
+  // El quitafondos permanece desactivado hasta configurar la API segura.
+  useEffect(() => {
+    let activo = true
+    fetch('/api/quitar-fondo', { cache: 'no-store' })
+      .then(res => res.ok ? res.json() : { disponible: false })
+      .then(datos => { if (activo) setQuitarFondoDisponible(datos.disponible === true) })
+      .catch(() => { if (activo) setQuitarFondoDisponible(false) })
+    return () => { activo = false }
+  }, [])
 
   useEffect(() => {
     let activo = true
@@ -485,7 +497,6 @@ export default function JugadorPage() {
 
   async function subirMiFoto(e) {
     const archivo = e.target.files?.[0]
-    // Permite volver a elegir el mismo archivo si hubo un error.
     e.target.value = ''
     if (!archivo || !usuario || !jugadorVinculado || subiendoFoto) return
 
@@ -507,30 +518,87 @@ export default function JugadorPage() {
     }
 
     setSubiendoFoto(true)
-    let ruta = null
+    const rutasNuevas = []
     try {
-      ruta = `${usuario.id}/${crypto.randomUUID()}.${extension}`
+      const identificador = crypto.randomUUID()
+      // Siempre conservar el archivo original, aunque se quite el fondo.
+      const rutaOriginal = `${usuario.id}/${identificador}-original.${extension}`
       const { error: errorSubida } = await supabase.storage
         .from('fotos-jugadores')
-        .upload(ruta, archivo, { contentType: archivo.type, upsert: false })
+        .upload(rutaOriginal, archivo, { contentType: archivo.type, upsert: false })
       if (errorSubida) throw errorSubida
+      rutasNuevas.push(rutaOriginal)
 
-      const { data } = supabase.storage
-        .from('fotos-jugadores')
-        .getPublicUrl(ruta)
-      if (!data?.publicUrl) throw new Error('No se pudo obtener la URL de la foto.')
+      const { data: original } = supabase.storage
+        .from('fotos-jugadores').getPublicUrl(rutaOriginal)
+      if (!original?.publicUrl) throw new Error('No se pudo obtener la URL original.')
 
+      let fotoPublica = original.publicUrl
+      let aviso = ''
+
+      if (quitarFondo && quitarFondoDisponible) {
+        let rutaProcesada = null
+        try {
+          const { data: sesion, error: errorSesion } = await supabase.auth.getSession()
+          if (errorSesion || !sesion?.session?.access_token) {
+            throw new Error('La sesión expiró. Inicia sesión nuevamente.')
+          }
+
+          const formulario = new FormData()
+          formulario.append('archivo', archivo, archivo.name)
+          const respuesta = await fetch('/api/quitar-fondo', {
+            method: 'POST',
+            headers: { Authorization: `Bearer ${sesion.session.access_token}` },
+            body: formulario
+          })
+          if (!respuesta.ok) {
+            const datos = await respuesta.json().catch(() => ({}))
+            throw new Error(datos.error || 'El servicio no pudo procesar la foto.')
+          }
+
+          const png = await respuesta.blob()
+          if (!png.size || png.size > 5 * 1024 * 1024) {
+            throw new Error('La imagen procesada es demasiado grande.')
+          }
+          rutaProcesada = `${usuario.id}/${identificador}-sin-fondo.png`
+          const { error: errorPNG } = await supabase.storage
+            .from('fotos-jugadores')
+            .upload(rutaProcesada, png, { contentType: 'image/png', upsert: false })
+          if (errorPNG) throw errorPNG
+
+          const { data: procesada } = supabase.storage
+            .from('fotos-jugadores').getPublicUrl(rutaProcesada)
+          if (!procesada?.publicUrl) throw new Error('No se obtuvo la URL procesada.')
+          rutasNuevas.push(rutaProcesada)
+          fotoPublica = procesada.publicUrl
+        } catch (errorProcesado) {
+          // No perder la foto si falla el servicio externo.
+          if (rutaProcesada) {
+            await supabase.storage.from('fotos-jugadores').remove([rutaProcesada])
+          }
+          aviso = ' Se guardó la foto original, pero no se pudo quitar el fondo: ' +
+            (errorProcesado.message || 'error desconocido')
+        }
+      }
+
+      // Mantenemos la RPC oficial, que vincula la foto al jugador autorizado.
       const { error: errorVincular } = await supabase.rpc(
         'actualizar_mi_foto',
-        { p_foto_url: data.publicUrl }
+        { p_foto_url: fotoPublica }
       )
       if (errorVincular) throw errorVincular
 
-      setFotoJugador(data.publicUrl)
-      setMensajeFoto('¡Fotografía actualizada correctamente!')
+      setFotoJugador(fotoPublica)
+      setMensajeFoto(aviso
+        ? '¡Fotografía actualizada!' + aviso
+        : quitarFondo && quitarFondoDisponible
+          ? '¡Fotografía sin fondo actualizada! Conservamos la original.'
+          : '¡Fotografía actualizada correctamente!')
     } catch (err) {
-      // Si la foto no se pudo vincular, limpiamos el archivo recién subido.
-      if (ruta) await supabase.storage.from('fotos-jugadores').remove([ruta])
+      // Solo limpiamos los archivos de este intento si no se pudo vincular.
+      if (rutasNuevas.length) {
+        await supabase.storage.from('fotos-jugadores').remove(rutasNuevas)
+      }
       setErrorFoto('No se pudo guardar tu fotografía: ' + (err.message || 'Error desconocido.'))
     } finally {
       setSubiendoFoto(false)
@@ -632,7 +700,30 @@ export default function JugadorPage() {
               disabled={subiendoFoto}
             />
             <p style={{ fontSize: '13px', color: '#64748b' }}>JPG, PNG o WebP. Máximo 2 MB.</p>
-            {subiendoFoto && <p role="status">Subiendo fotografía...</p>}
+            {quitarFondoDisponible ? (
+              <label style={{ display: 'flex', alignItems: 'flex-start', gap: '8px', marginBottom: '12px' }}>
+                <input
+                  type="checkbox"
+                  checked={quitarFondo}
+                  onChange={e => setQuitarFondo(e.target.checked)}
+                  disabled={subiendoFoto}
+                  style={{ marginTop: '3px' }}
+                />
+                <span>
+                  <strong>Quitar el fondo automáticamente</strong>
+                  <small style={{ display: 'block', color: '#475569' }}>
+                    Si activas esta opción, enviaremos esta fotografía a remove.bg
+                    para eliminar su fondo. Conservaremos el original en YSASL.
+                  </small>
+                </span>
+              </label>
+            ) : (
+              <p style={{ fontSize: '13px', color: '#64748b' }}>
+                El quitafondos automático estará disponible cuando se configure el servicio.
+                Por ahora puedes seguir subiendo fotos normalmente.
+              </p>
+            )}
+            {subiendoFoto && <p role="status">Guardando y preparando fotografía...</p>}
             {mensajeFoto && <p role="status" style={{ color: '#166534' }}>{mensajeFoto}</p>}
             {errorFoto && <p role="alert" style={{ color: '#b91c1c' }}>{errorFoto}</p>}
           </>
