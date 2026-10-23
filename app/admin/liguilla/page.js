@@ -252,7 +252,7 @@ function crearBorradorSemifinales(preliminares, tabla, cantidad, fecha) {
     }
 
     // En CUARTOS o REPECHAJE, un empate favorece al mejor clasificado.
-    // Esta regla no se usa para semifinal, final o tercer lugar.
+    // La misma regla se aplica a semifinales al preparar la final.
     const ganadorId = resultado.estado === 'definido'
       ? resultado.ganadorId
       : Number(equipoA.id) // puestoA siempre es el mejor clasificado del par
@@ -278,18 +278,32 @@ function crearBorradorSemifinales(preliminares, tabla, cantidad, fecha) {
   }))
 }
 
-// El resultado de penales no se puede deducir de un empate: se bloquea hasta registrarlo.
+// En semifinales, si hay empate avanza el equipo mejor clasificado de la temporada regular.
+// Los penales se reservan exclusivamente para la final y el tercer lugar.
 function crearBorradorFinales(semifinales, tabla, fecha) {
   if (semifinales.length !== 2) return []
+  const posiciones = new Map(tabla.map((equipo, indice) => [Number(equipo.id), indice + 1]))
   const resultados = semifinales.map((p) => {
     if (p.estado !== 'finalizado' || p.goles_local == null || p.goles_visitante == null) return null
-    const local = Number(p.goles_local)
-    const visitante = Number(p.goles_visitante)
-    if (!Number.isInteger(local) || !Number.isInteger(visitante) ||
-      local < 0 || visitante < 0 || local === visitante) return null
+    const gl = Number(p.goles_local)
+    const gv = Number(p.goles_visitante)
+    const localId = Number(p.local_id)
+    const visitanteId = Number(p.visitante_id)
+    if (![gl, gv, localId, visitanteId].every(Number.isInteger) ||
+      gl < 0 || gv < 0 || localId <= 0 || visitanteId <= 0 || localId === visitanteId) return null
+
+    let ganadorId
+    if (gl === gv) {
+      const puestoLocal = posiciones.get(localId)
+      const puestoVisitante = posiciones.get(visitanteId)
+      if (!puestoLocal || !puestoVisitante || puestoLocal === puestoVisitante) return null
+      ganadorId = puestoLocal < puestoVisitante ? localId : visitanteId
+    } else {
+      ganadorId = gl > gv ? localId : visitanteId
+    }
     return {
-      ganadorId: Number(local > visitante ? p.local_id : p.visitante_id),
-      perdedorId: Number(local > visitante ? p.visitante_id : p.local_id),
+      ganadorId,
+      perdedorId: ganadorId === localId ? visitanteId : localId,
     }
   })
   if (resultados.some((r) => !r)) return []
@@ -305,8 +319,8 @@ function crearBorradorFinales(semifinales, tabla, fecha) {
   ]
 }
 
-// Determina puestos solo con resultados definitivos y sin empate.
-// Los penales requieren un ganador registrado; no se inventa a partir del marcador.
+// Determina el podio con los resultados oficiales.
+// Solo la final y el tercer lugar empatados se resuelven con penales registrados.
 function resolverResultadoEliminatoria(partido) {
   if (!partido || partido.estado !== 'finalizado' ||
     partido.goles_local == null || partido.goles_visitante == null) {
@@ -319,13 +333,29 @@ function resolverResultadoEliminatoria(partido) {
     Number(partido.local_id) === Number(partido.visitante_id)) {
     return { estado: 'pendiente', ganadorId: null, perdedorId: null }
   }
+  const localId = Number(partido.local_id)
+  const visitanteId = Number(partido.visitante_id)
+  if (![localId, visitanteId].every(Number.isInteger) || localId <= 0 || visitanteId <= 0) {
+    return { estado: 'pendiente', ganadorId: null, perdedorId: null }
+  }
+  let ganadorId
   if (golesLocal === golesVisitante) {
-    return { estado: 'penales_pendientes', ganadorId: null, perdedorId: null }
+    if (!['final', 'tercer_lugar'].includes(String(partido.fase || '').toLowerCase())) {
+      return { estado: 'pendiente', ganadorId: null, perdedorId: null }
+    }
+    const pl = partido.penales_local == null ? null : Number(partido.penales_local)
+    const pv = partido.penales_visitante == null ? null : Number(partido.penales_visitante)
+    if (!Number.isInteger(pl) || !Number.isInteger(pv) || pl < 0 || pv < 0 || pl === pv) {
+      return { estado: 'penales_pendientes', ganadorId: null, perdedorId: null }
+    }
+    ganadorId = pl > pv ? localId : visitanteId
+  } else {
+    ganadorId = golesLocal > golesVisitante ? localId : visitanteId
   }
   return {
     estado: 'definido',
-    ganadorId: Number(golesLocal > golesVisitante ? partido.local_id : partido.visitante_id),
-    perdedorId: Number(golesLocal > golesVisitante ? partido.visitante_id : partido.local_id),
+    ganadorId,
+    perdedorId: ganadorId === localId ? visitanteId : localId,
   }
 }
 
@@ -504,7 +534,7 @@ export default function AdminLiguillaPage() {
           const lote = idsJornadas.slice(i, i + 40)
           for (let desde = 0; ; desde += 500) {
             const res = await supabase.from('partidos')
-              .select('id,jornada_id,local_id,visitante_id,goles_local,goles_visitante,estado,fecha,hora,campo_id,fase')
+              .select('id,jornada_id,local_id,visitante_id,goles_local,goles_visitante,penales_local,penales_visitante,estado,fecha,hora,campo_id,fase')
               .in('jornada_id', lote).order('id').range(desde, desde + 499)
             if (res.error) throw res.error
             todosPartidos.push(...(res.data || []))
@@ -585,9 +615,6 @@ export default function AdminLiguillaPage() {
         if (semis.some((p) => p.estado !== 'finalizado' ||
           p.goles_local == null || p.goles_visitante == null)) {
           throw new Error('Primero deben terminar las dos semifinales y registrar sus marcadores.')
-        }
-        if (semis.some((p) => Number(p.goles_local) === Number(p.goles_visitante))) {
-          throw new Error('Hay una semifinal empatada. Debe registrarse el ganador por penales antes de crear la final.')
         }
         const fechasSemis = semis.map((p) => p.fecha || p.jornadas?.fecha).filter(Boolean).sort()
         if (fechasSemis.length !== 2) throw new Error('Falta la fecha de una semifinal.')
@@ -911,7 +938,7 @@ export default function AdminLiguillaPage() {
           {ronda.duelos.map(([a, b], idx) => <p key={idx}>
             <strong>Partido {idx + 1}:</strong> {a} <strong>vs</strong> {b}
           </p>)}
-          <small>{['Repechaje', 'Cuartos de final'].includes(ronda.titulo)
+          <small>{['Repechaje', 'Cuartos de final', 'Semifinales'].includes(ronda.titulo)
             ? 'Si hay empate, avanza el mejor clasificado en la fase regular.'
             : 'Si hay empate, se define directamente por penales (sin tiempos extras).'}</small>
         </div>)}
