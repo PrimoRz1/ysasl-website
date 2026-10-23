@@ -1,4 +1,5 @@
 import { supabase } from '../lib/supabase'
+import LiguillaCuadro from './LiguillaCuadro'
 
 export const dynamic = 'force-dynamic'
 
@@ -434,6 +435,9 @@ export default async function Home() {
           }}>Ver clasificación</a>
         </div>
       </header>
+
+      {/* Cuadro público de liguilla: solo lectura, aparece cuando hay rondas oficiales. */}
+      <LiguillaCuadro compacto />
 
       <section style={{ marginTop: '35px', marginBottom: '45px' }}>
         <h2 style={{ marginBottom: '8px' }}>🔥 Partidos Destacados</h2>
