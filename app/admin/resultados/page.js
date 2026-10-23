@@ -17,6 +17,7 @@ const [goleadores, setGoleadores] = useState({})
 const [divisionId, setDivisionId] = useState('')
 const [jornadas, setJornadas] = useState([])
 const [jornadaId, setJornadaId] = useState('')
+  const [faseVista, setFaseVista] = useState('todas')
   useEffect(() => {
   cargarPartidos()
   cargarJugadores()
@@ -31,7 +32,7 @@ const [jornadaId, setJornadaId] = useState('')
     const { data, error } = await supabase
       .from('calendario_partidos')
       .select('*')
-      .order('fecha', { ascending: false })
+      .order('fecha', { ascending: false, nullsFirst: false })
       .order('hora', { ascending: true })
 
     if (error) {
@@ -142,6 +143,56 @@ const [jornadaId, setJornadaId] = useState('')
   setJornadaId('')
 }
 
+  // La Jornada 14 de Segunda División, Verano/Invierno 2026,
+  // corresponde a los cuartos de final. Esta etiqueta NO modifica Supabase.
+  function esCuartosSegunda2026(partido) {
+    const division = divisiones.find(
+      (item) => Number(item.id) === Number(partido.division_id)
+    )
+    return (
+      Number(partido.jornada) === 14 &&
+      division &&
+      /segunda/i.test(division.nombre || '') &&
+      /2026/.test(division.nombreTorneo || '')
+    )
+  }
+
+  function esLiguilla(partido) {
+    const fase = String(partido.fase || '').toLowerCase()
+    return (
+      esCuartosSegunda2026(partido) ||
+      ['liguilla', 'cuartos', 'reclas', 'semifinal', 'tercer', 'final']
+        .some((palabra) => fase.includes(palabra))
+    )
+  }
+
+  function etiquetaPartido(partido) {
+    if (esCuartosSegunda2026(partido)) return 'Cuartos de final'
+    const fase = String(partido.fase || '').toLowerCase()
+    if (fase.includes('cuartos')) return 'Cuartos de final'
+    if (fase.includes('reclas')) return 'Reclasificación'
+    if (fase.includes('semifinal')) return 'Semifinal'
+    if (fase.includes('tercer')) return 'Tercer lugar'
+    if (fase.includes('final')) return 'Final'
+    if (esLiguilla(partido)) return `Liguilla — Jornada ${partido.jornada}`
+    return `Jornada ${partido.jornada}`
+  }
+
+  function etiquetaJornada(numero, divisionSeleccionada) {
+    const division = divisiones.find(
+      (item) => Number(item.id) === Number(divisionSeleccionada)
+    )
+    if (
+      Number(numero) === 14 &&
+      division &&
+      /segunda/i.test(division.nombre || '') &&
+      /2026/.test(division.nombreTorneo || '')
+    ) {
+      return 'Cuartos de final'
+    }
+    return `Jornada ${numero}`
+  }
+
   function cambiarGol(partidoId, tipo, valor) {
     if (valor !== '' && Number(valor) < 0) return
 
@@ -197,8 +248,6 @@ if (!goleadoresGuardados) {
   return
 }
 
-setGuardandoId(null)
-
     setGoles((actual) => {
       const copia = { ...actual }
       delete copia[partido.id]
@@ -211,24 +260,31 @@ if (!tarjetasGuardadas) {
   return
 }
 
+    const tarjetasProcesadas = await procesarTarjetas(partido)
+
+if (!tarjetasProcesadas) {
+  setMensaje('El resultado y las tarjetas se guardaron, pero hubo un error al procesar las suspensiones. No vuelvas a guardar esas tarjetas: revisa los registros.')
+  setTarjetas((actual) => {
+    const copia = { ...actual }
+    delete copia[partido.id]
+    return copia
+  })
+  setGuardandoId(null)
+  return
+}
+
 setTarjetas((actual) => {
   const copia = { ...actual }
   delete copia[partido.id]
   return copia
 })
-    const tarjetasProcesadas = await procesarTarjetas(partido)
-
-if (!tarjetasProcesadas) {
-  setMensaje('El resultado se guardó, pero hubo un error al procesar las tarjetas.')
-  setGuardandoId(null)
-  return
-}
     const suspensionesProcesadas = await procesarSuspensiones(partido)
 
 if (!suspensionesProcesadas) {
   setMensaje('El resultado se guardó, pero hubo un error al procesar las suspensiones.')
 }
     await cargarPartidos()
+    setGuardandoId(null)
   }
 
 async function procesarSuspensiones(partido) {
@@ -329,83 +385,71 @@ if (suspension.fecha && partido.fecha && partido.fecha < suspension.fecha) {
 async function guardarGoleadores(partido) {
   const golesPartido = goleadores[partido.id] || []
 
-  // Primero borramos los goles anteriores de este partido
-  const { error: errorBorrar } = await supabase
-    .from('eventos_partido')
-    .delete()
-    .eq('partido_id', partido.id)
-    .eq('tipo', 'gol')
+  // NO borrar goleadores históricos al volver a guardar el marcador.
+  // Los jugadores seleccionados aquí se agregan como eventos nuevos.
+  if (golesPartido.length === 0) return true
 
-  if (errorBorrar) {
-    console.error(errorBorrar)
-    setMensaje('Error al actualizar los goleadores.')
+  if (golesPartido.some((gol) => !gol.jugador_id || !gol.equipo_id)) {
+    setMensaje('Selecciona un jugador para cada gol agregado.')
     return false
   }
 
-  // Guardamos los goleadores seleccionados
-  if (golesPartido.length > 0) {
-    const registros = golesPartido.map((gol) => ({
+  const registros = golesPartido.map((gol) => ({
+    partido_id: partido.id,
+    jugador_id: Number(gol.jugador_id),
+    equipo_id: Number(gol.equipo_id),
+    tipo: 'gol',
+  }))
+
+  const { error } = await supabase
+    .from('eventos_partido')
+    .insert(registros)
+
+  if (error) {
+    console.error(error)
+    setMensaje('Error al agregar los goleadores.')
+    return false
+  }
+
+  // Evita repetir el mismo lote si después se guarda el marcador otra vez.
+  setGoleadores((actual) => {
+    const copia = { ...actual }
+    delete copia[partido.id]
+    return copia
+  })
+  return true
+}
+
+  async function guardarTarjetas(partido) {
+    const tarjetasPartido = tarjetas[partido.id] || []
+
+    // NO borrar tarjetas históricas al guardar un resultado.
+    if (tarjetasPartido.length === 0) return true
+
+    if (tarjetasPartido.some((tarjeta) => !tarjeta.jugador_id || !tarjeta.equipo_id)) {
+      setMensaje('Selecciona un jugador para cada tarjeta agregada.')
+      return false
+    }
+
+    const registros = tarjetasPartido.map((tarjeta) => ({
       partido_id: partido.id,
-      jugador_id: Number(gol.jugador_id),
-      equipo_id: Number(gol.equipo_id),
-      tipo: 'gol'
+      jugador_id: Number(tarjeta.jugador_id),
+      equipo_id: Number(tarjeta.equipo_id),
+      tipo: tarjeta.tipo,
     }))
 
-    const { error: errorInsertar } = await supabase
+    const { error } = await supabase
       .from('eventos_partido')
       .insert(registros)
 
-    if (errorInsertar) {
-      console.error(errorInsertar)
-      setMensaje('Error al guardar los goleadores.')
+    if (error) {
+      console.error(error)
+      setMensaje('Error al agregar las tarjetas.')
       return false
     }
+
+    return true
   }
-
-  return true
-}
-  async function guardarTarjetas(partido) {
-  const tarjetasPartido = tarjetas[partido.id] || []
-
-  // Primero borramos las tarjetas anteriores de este partido
-  const { error: errorBorrar } = await supabase
-    .from('eventos_partido')
-    .delete()
-    .eq('partido_id', partido.id)
-    .in('tipo', ['amarilla', 'roja'])
-
-  if (errorBorrar) {
-    console.error(errorBorrar)
-    setMensaje('Error al actualizar las tarjetas.')
-    return false
-  }
-
-  // Guardamos las tarjetas seleccionadas
-  if (tarjetasPartido.length > 0) {
-    const registros = tarjetasPartido
-      .filter((tarjeta) => tarjeta.jugador_id)
-      .map((tarjeta) => ({
-        partido_id: partido.id,
-        jugador_id: Number(tarjeta.jugador_id),
-        equipo_id: Number(tarjeta.equipo_id),
-        tipo: tarjeta.tipo,
-      }))
-
-    if (registros.length > 0) {
-      const { error: errorInsertar } = await supabase
-        .from('eventos_partido')
-        .insert(registros)
-
-      if (errorInsertar) {
-        console.error(errorInsertar)
-        setMensaje('Error al guardar las tarjetas.')
-        return false
-      }
-    }
-  }
-
-  return true
-}
   async function procesarTarjetas(partido) {
   const tarjetasPartido = (tarjetas[partido.id] || []).filter(
     (tarjeta) => tarjeta.jugador_id
@@ -595,6 +639,19 @@ function agregarGoleador(partido, equipoId) {
   </select>
 
   <label>
+    <strong>Fase:</strong>
+  </label>
+  <select
+    value={faseVista}
+    onChange={(e) => setFaseVista(e.target.value)}
+    style={{ marginLeft: '10px', marginRight: '25px' }}
+  >
+    <option value="todas">Todas</option>
+    <option value="regular">Temporada regular</option>
+    <option value="liguilla">Liguilla</option>
+  </select>
+
+  <label>
     <strong>Jornada:</strong>
   </label>
 
@@ -607,7 +664,7 @@ function agregarGoleador(partido, equipoId) {
     <option value="">Seleccionar jornada</option>
     {jornadas.map((jornada) => (
       <option key={jornada.id} value={jornada.id}>
-        Jornada {jornada.numero}
+        {etiquetaJornada(jornada.numero, divisionId)}
         {jornada.fecha ? ` — ${jornada.fecha}` : ''}
       </option>
     ))}
@@ -631,6 +688,9 @@ function agregarGoleador(partido, equipoId) {
     if (divisionId && Number(partido.division_id) !== Number(divisionId)) {
       return false
     }
+
+    if (faseVista === 'liguilla' && !esLiguilla(partido)) return false
+    if (faseVista === 'regular' && esLiguilla(partido)) return false
 
     if (jornadaId) {
   const jornadaSeleccionada = jornadas.find(
@@ -663,7 +723,7 @@ function agregarGoleador(partido, equipoId) {
                   fontWeight: 'bold',
                 }}
               >
-                Jornada {partido.jornada}
+                {etiquetaPartido(partido)}
                 {' — '}
                 {partido.fecha || 'Sin fecha'}
                 {' — '}
