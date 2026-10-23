@@ -80,6 +80,41 @@ function perdedorPartido(partido, posiciones) {
   return ganador === Number(partido.local_id) ? Number(partido.visitante_id) : Number(partido.local_id)
 }
 
+// En Inicio, cada división permanece visible durante la liguilla y
+// los 14 días completos posteriores al último partido de su cierre oficial.
+// La página /liguilla conserva el cuadro histórico sin este límite.
+function fechaHoyCalifornia() {
+  const partes = new Intl.DateTimeFormat('en-US', {
+    timeZone: 'America/Los_Angeles',
+    year: 'numeric', month: '2-digit', day: '2-digit',
+  }).formatToParts(new Date())
+  const fecha = Object.fromEntries(partes.map((p) => [p.type, p.value]))
+  return `${fecha.year}-${fecha.month}-${fecha.day}`
+}
+
+function diaCalendario(fechaISO) {
+  const valor = String(fechaISO || '').slice(0, 10)
+  if (!/^\d{4}-\d{2}-\d{2}$/.test(valor)) return null
+  const fecha = new Date(`${valor}T12:00:00Z`)
+  if (Number.isNaN(fecha.getTime()) || fecha.toISOString().slice(0, 10) !== valor) return null
+  return Date.UTC(fecha.getUTCFullYear(), fecha.getUTCMonth(), fecha.getUTCDate()) / 86400000
+}
+
+function liguillaCumplioDosSemanas(eliminatorias, posiciones, hoyISO = fechaHoyCalifornia()) {
+  const finales = eliminatorias.filter((p) => p.fase === 'final')
+  const terceros = eliminatorias.filter((p) => p.fase === 'tercer_lugar')
+  // No ocultar nada si falta algún partido oficial o hay duplicados.
+  if (finales.length !== 1 || terceros.length !== 1) return false
+  const partidosCierre = [finales[0], terceros[0]]
+  // Exige resultado definitivo, incluyendo penales si hubo empate.
+  if (partidosCierre.some((p) => ganadorPartido(p, posiciones) == null)) return false
+  const fechas = partidosCierre.map((p) => diaCalendario(p.fecha || p.jornadas?.fecha))
+  if (fechas.some((dia) => dia === null)) return false
+  const hoy = diaCalendario(hoyISO)
+  // Se muestra durante 14 días completos posteriores a la fecha del cierre.
+  return hoy !== null && hoy > Math.max(...fechas) + 14
+}
+
 function encontrarCruce(partidos, fase, a, b) {
   if (!a || !b) return null
   const encontrados = partidos.filter((p) => p.fase === fase &&
@@ -267,7 +302,7 @@ async function obtenerDatos(divisionSolicitada) {
 
   const [respuestaPartidos, respuestaEquipos, respuestaCampos] = await Promise.all([
     supabase.from('partidos')
-      .select('id,jornada_id,local_id,visitante_id,fecha,hora,campo_id,goles_local,goles_visitante,penales_local,penales_visitante,estado,fase,partido_origen_1,partido_origen_2,jornadas!inner(division_id)')
+      .select('id,jornada_id,local_id,visitante_id,fecha,hora,campo_id,goles_local,goles_visitante,penales_local,penales_visitante,estado,fase,partido_origen_1,partido_origen_2,jornadas!inner(division_id,fecha)')
       .eq('jornadas.division_id', Number(division.id)).order('id'),
     supabase.from('equipos').select('*'),
     supabase.from('campos').select('id,nombre,numero'),
@@ -319,6 +354,8 @@ export default async function LiguillaCuadro({ division = 'ambas', compacto = fa
   if (!datos) return compacto ? null : <p>No se encontró esta división en la temporada oficial.</p>
   if (compacto && !datos.eliminatorias.length) return null
   const cuadro = crearCuadro(datos.tabla, datos.eliminatorias)
+  // Solo la portada se oculta; /liguilla sigue disponible como historial.
+  if (compacto && liguillaCumplioDosSemanas(datos.eliminatorias, cuadro.posiciones)) return null
   const sinLiguilla = !datos.eliminatorias.length
 
   return (
