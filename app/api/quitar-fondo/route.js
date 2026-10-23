@@ -1,8 +1,10 @@
 // YSASL — app/api/quitar-fondo/route.js
 // API privada: Leonardo.Ai para fotos de jugadores (sin fondo).
 // IMPORTANTE: se mantiene APAGADA hasta habilitarla expresamente en Vercel.
-// También requiere una RPC de Supabase para el presupuesto y los cupos
-// por temporada. Sin esa RPC, FALLA CERRADA (no realiza llamadas pagadas).
+// Requiere la RPC de Supabase para presupuesto y cupos por temporada.
+// Compatible con NEXT_PUBLIC_SUPABASE_PUBLISHABLE_KEY (Supabase actual)
+// y NEXT_PUBLIC_SUPABASE_ANON_KEY (proyectos anteriores).
+// Sin la RPC, FALLA CERRADA (no realiza llamadas pagadas).
 
 export const runtime = 'nodejs'
 export const dynamic = 'force-dynamic'
@@ -17,7 +19,7 @@ function configurado() {
     process.env.YSASL_QUITAFONDO_HABILITADO === 'true' &&
     process.env.LEONARDO_API_KEY &&
     process.env.NEXT_PUBLIC_SUPABASE_URL &&
-    process.env.NEXT_PUBLIC_SUPABASE_ANON_KEY
+    (process.env.NEXT_PUBLIC_SUPABASE_PUBLISHABLE_KEY || process.env.NEXT_PUBLIC_SUPABASE_ANON_KEY)
   )
 }
 
@@ -46,7 +48,7 @@ export async function POST(request) {
 
   const token = coincidencia[1]
   const base = process.env.NEXT_PUBLIC_SUPABASE_URL.replace(/\/$/, '')
-  const anon = process.env.NEXT_PUBLIC_SUPABASE_ANON_KEY
+  const anon = (process.env.NEXT_PUBLIC_SUPABASE_PUBLISHABLE_KEY || process.env.NEXT_PUBLIC_SUPABASE_ANON_KEY)
   const headersSupabase = { apikey: anon, Authorization: `Bearer ${token}` }
 
   // Comprobar la sesión con Supabase Auth (no confiar solo en el navegador).
@@ -81,9 +83,9 @@ export async function POST(request) {
     return errorJson('Selecciona una imagen JPG, PNG o WebP de máximo 2 MB.', 400)
   }
 
-  // Reserva atómica: valida jugador aprobado, temporada actual, máximo
-  // una primera foto + un cambio por temporada, límite diario y presupuesto.
-  // Esta RPC se instalará en un paso POSTERIOR. Hasta entonces NO se paga nada.
+  // Reserva atómica: valida jugador aprobado y temporada activa, máximo
+  // dos procesamientos por jugador/temporada y 620 reservas globales.
+  // SIN límite diario. Si falta la RPC, no se realiza ninguna llamada pagada.
   let permitido = false
   try {
     const cuota = await fetch(`${base}/rest/v1/rpc/reservar_quitafondo_leonardo`, {
