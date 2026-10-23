@@ -54,8 +54,18 @@ export default function JugadorPage() {
     let activo = true
     fetch('/api/quitar-fondo', { cache: 'no-store' })
       .then(res => res.ok ? res.json() : { disponible: false })
-      .then(datos => { if (activo) setQuitarFondoDisponible(datos.disponible === true) })
-      .catch(() => { if (activo) setQuitarFondoDisponible(false) })
+      .then(datos => {
+        if (!activo) return
+        const disponible = datos.disponible === true
+        setQuitarFondoDisponible(disponible)
+        // El jugador recibe la opción activada por defecto; puede desmarcarla.
+        setQuitarFondo(disponible)
+      })
+      .catch(() => {
+        if (!activo) return
+        setQuitarFondoDisponible(false)
+        setQuitarFondo(false)
+      })
     return () => { activo = false }
   }, [])
 
@@ -689,17 +699,6 @@ export default function JugadorPage() {
             <p style={{ color: '#475569' }}>
               Esta fotografía será pública en tu ficha y podrá aparecer en Líderes de Goleo.
             </p>
-            <label htmlFor="foto-jugador" style={{ display: 'block', marginBottom: '8px', fontWeight: 'bold' }}>
-              {fotoJugador ? 'Cambiar mi fotografía' : 'Subir mi fotografía'}
-            </label>
-            <input
-              id="foto-jugador"
-              type="file"
-              accept="image/jpeg,image/png,image/webp"
-              onChange={subirMiFoto}
-              disabled={subiendoFoto}
-            />
-            <p style={{ fontSize: '13px', color: '#64748b' }}>JPG, PNG o WebP. Máximo 2 MB.</p>
             {quitarFondoDisponible ? (
               <label style={{ display: 'flex', alignItems: 'flex-start', gap: '8px', marginBottom: '12px' }}>
                 <input
@@ -712,8 +711,11 @@ export default function JugadorPage() {
                 <span>
                   <strong>Quitar el fondo automáticamente</strong>
                   <small style={{ display: 'block', color: '#475569' }}>
-                    Si activas esta opción, enviaremos esta fotografía a remove.bg
-                    para eliminar su fondo. Conservaremos el original en YSASL.
+                    Cuando esté marcada, enviaremos la fotografía a Leonardo.Ai
+                    para quitarle el fondo. Puedes desmarcarla si prefieres la
+                    foto original. YSASL cubrirá hasta dos procesamientos por
+                    jugador y temporada, sujetos al presupuesto disponible.
+                    Conservaremos la fotografía original en YSASL.
                   </small>
                 </span>
               </label>
@@ -723,6 +725,17 @@ export default function JugadorPage() {
                 Por ahora puedes seguir subiendo fotos normalmente.
               </p>
             )}
+            <label htmlFor="foto-jugador" style={{ display: 'block', marginBottom: '8px', fontWeight: 'bold' }}>
+              {fotoJugador ? 'Cambiar mi fotografía' : 'Subir mi fotografía'}
+            </label>
+            <input
+              id="foto-jugador"
+              type="file"
+              accept="image/jpeg,image/png,image/webp"
+              onChange={subirMiFoto}
+              disabled={subiendoFoto}
+            />
+            <p style={{ fontSize: '13px', color: '#64748b' }}>JPG, PNG o WebP. Máximo 2 MB.</p>
             {subiendoFoto && <p role="status">Guardando y preparando fotografía...</p>}
             {mensajeFoto && <p role="status" style={{ color: '#166534' }}>{mensajeFoto}</p>}
             {errorFoto && <p role="alert" style={{ color: '#b91c1c' }}>{errorFoto}</p>}
