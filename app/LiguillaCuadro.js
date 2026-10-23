@@ -60,13 +60,13 @@ function ganadorPartido(partido, posiciones) {
   if (![gl, gv, local, visitante].every(Number.isInteger) ||
     gl < 0 || gv < 0 || local <= 0 || visitante <= 0 || local === visitante) return null
   if (gl !== gv) return gl > gv ? local : visitante
-  // En cuartos y repechaje, el empate favorece al mejor sembrado.
-  if (partido.fase === 'cuartos' || partido.fase === 'repechaje') {
+  // En cuartos, repechaje y semifinales, el empate favorece al mejor sembrado.
+  if (['cuartos', 'repechaje', 'semifinal'].includes(partido.fase)) {
     const a = posiciones.get(local)
     const b = posiciones.get(visitante)
     return a && b && a !== b ? (a < b ? local : visitante) : null
   }
-  // Semifinal, final y tercer lugar: solamente penales registrados oficialmente.
+  // Solo final y tercer lugar: penales registrados oficialmente.
   if (partido.penales_local == null || partido.penales_visitante == null) return null
   const pl = Number(partido.penales_local)
   const pv = Number(partido.penales_visitante)
@@ -247,7 +247,7 @@ function TarjetaPartido({ duelo, equiposPorId, posiciones, camposPorId, camposVi
       )}
       {finalizado && empatado && (
         <div className="ysasl-ll-desempate">
-          {['cuartos', 'repechaje'].includes(p.fase)
+          {['cuartos', 'repechaje', 'semifinal'].includes(p.fase)
             ? 'Desempate: avanza el mejor clasificado'
             : penales ? `Penales: ${p.penales_local}–${p.penales_visitante}` : 'Ganador por penales pendiente'}
         </div>
@@ -384,7 +384,7 @@ export default async function LiguillaCuadro({ division = 'segunda', compacto = 
                 camposPorId={datos.camposPorId} camposVista={datos.camposVista} />
             </div>
           )}
-          <p className="ysasl-ll-ayuda">Los marcadores y avances se muestran únicamente a partir de resultados oficiales. En cuartos y reclasificación, un empate favorece al mejor clasificado; en semifinales y final se requieren penales.</p>
+          <p className="ysasl-ll-ayuda">Los marcadores y avances se muestran únicamente a partir de resultados oficiales. En cuartos, reclasificación y semifinales, un empate favorece al mejor clasificado. Solo la final y el tercer lugar se deciden por penales si hay empate.</p>
         </>
       )}
     </section>
