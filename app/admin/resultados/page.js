@@ -40,18 +40,52 @@ const [jornadaId, setJornadaId] = useState('')
       setMensaje('Error al cargar los partidos.')
       setPartidos([])
     } else {
-      setPartidos(data || [])
-      setGoles(
-  Object.fromEntries(
-    (data || []).map((partido) => [
-      partido.id,
-      {
-        local: partido.goles_local ?? '',
-        visitante: partido.goles_visitante ?? ''
+      // La vista calendario_partidos puede no incluir la columna fase.
+      // Consultar SOLO LECTURA en partidos para mostrar la fase oficial,
+      // sin modificar los resultados, tarjetas ni eventos de los encuentros.
+      const partidosVista = data || []
+      const fasesPorId = new Map()
+      let errorFases = null
+
+      // Consultas pequeñas para no exceder los límites de la API.
+      for (let inicio = 0; inicio < partidosVista.length; inicio += 200) {
+        const ids = partidosVista.slice(inicio, inicio + 200).map((p) => p.id)
+        const respuesta = await supabase
+          .from('partidos')
+          .select('id,fase')
+          .in('id', ids)
+
+        if (respuesta.error) {
+          errorFases = respuesta.error
+          break
+        }
+        for (const fila of respuesta.data || []) {
+          fasesPorId.set(Number(fila.id), fila.fase)
+        }
       }
-    ])
-  )
-)
+
+      if (errorFases) {
+        console.error('Error al consultar fases oficiales:', errorFases)
+        setMensaje('No se pudieron consultar las fases oficiales. Los resultados siguen disponibles, pero algunas etiquetas pueden mostrar Jornada.')
+      }
+
+      const partidosConFase = partidosVista.map((partido) => ({
+        ...partido,
+        fase: fasesPorId.get(Number(partido.id)) ?? partido.fase ?? null,
+      }))
+
+      setPartidos(partidosConFase)
+      setGoles(
+        Object.fromEntries(
+          partidosConFase.map((partido) => [
+            partido.id,
+            {
+              local: partido.goles_local ?? '',
+              visitante: partido.goles_visitante ?? '',
+            },
+          ])
+        )
+      )
     }
 
     setCargando(false)
@@ -143,54 +177,44 @@ const [jornadaId, setJornadaId] = useState('')
   setJornadaId('')
 }
 
-  // La Jornada 14 de Segunda División, Verano/Invierno 2026,
-  // corresponde a los cuartos de final. Esta etiqueta NO modifica Supabase.
-  function esCuartosSegunda2026(partido) {
-    const division = divisiones.find(
-      (item) => Number(item.id) === Number(partido.division_id)
-    )
-    return (
-      Number(partido.jornada) === 14 &&
-      division &&
-      /segunda/i.test(division.nombre || '') &&
-      /2026/.test(division.nombreTorneo || '')
-    )
+  // Etiquetas basadas en la fase REAL guardada en partidos.fase.
+  // No inferir liguilla por numero de jornada: cada temporada puede variar.
+  function nombreFase(faseOriginal) {
+    const fase = String(faseOriginal || '').toLowerCase()
+    if (fase === 'repechaje' || fase.includes('reclas')) return 'Reclasificación'
+    if (fase.includes('cuartos')) return 'Cuartos de final'
+    if (fase.includes('semifinal')) return 'Semifinales'
+    if (fase.includes('tercer')) return 'Tercer lugar'
+    if (fase === 'final') return 'Gran final'
+    return null
   }
 
   function esLiguilla(partido) {
-    const fase = String(partido.fase || '').toLowerCase()
-    return (
-      esCuartosSegunda2026(partido) ||
-      ['liguilla', 'cuartos', 'reclas', 'semifinal', 'tercer', 'final']
-        .some((palabra) => fase.includes(palabra))
-    )
+    return Boolean(nombreFase(partido.fase)) ||
+      String(partido.fase || '').toLowerCase() === 'liguilla'
   }
 
   function etiquetaPartido(partido) {
-    if (esCuartosSegunda2026(partido)) return 'Cuartos de final'
-    const fase = String(partido.fase || '').toLowerCase()
-    if (fase.includes('cuartos')) return 'Cuartos de final'
-    if (fase.includes('reclas')) return 'Reclasificación'
-    if (fase.includes('semifinal')) return 'Semifinal'
-    if (fase.includes('tercer')) return 'Tercer lugar'
-    if (fase.includes('final')) return 'Final'
+    const fase = nombreFase(partido.fase)
+    if (fase) return fase
     if (esLiguilla(partido)) return `Liguilla — Jornada ${partido.jornada}`
     return `Jornada ${partido.jornada}`
   }
 
   function etiquetaJornada(numero, divisionSeleccionada) {
-    const division = divisiones.find(
-      (item) => Number(item.id) === Number(divisionSeleccionada)
+    // Mostrar el nombre de fase si los partidos de esta jornada coinciden.
+    // Las jornadas de fase regular conservan su número original.
+    const fases = new Set(
+      partidos
+        .filter((partido) =>
+          Number(partido.division_id) === Number(divisionSeleccionada) &&
+          Number(partido.jornada) === Number(numero)
+        )
+        .map((partido) => nombreFase(partido.fase) || 'regular')
     )
-    if (
-      Number(numero) === 14 &&
-      division &&
-      /segunda/i.test(division.nombre || '') &&
-      /2026/.test(division.nombreTorneo || '')
-    ) {
-      return 'Cuartos de final'
-    }
-    return `Jornada ${numero}`
+    return fases.size === 1 && !fases.has('regular')
+      ? [...fases][0]
+      : `Jornada ${numero}`
   }
 
   function cambiarGol(partidoId, tipo, valor) {
