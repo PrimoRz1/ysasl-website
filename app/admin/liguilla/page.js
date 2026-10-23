@@ -216,29 +216,60 @@ function crearBorradorPrimeraRonda(tabla, cantidad, fecha) {
   }))
 }
 
-// Prepara semifinales a partir de la ronda previa ya finalizada.
-// Se usa el orden de guardado para mantener el cuadro de eliminación.
+// Prepara semifinales siguiendo el CUADRO DE ELIMINACIÓN, no el orden de IDs
+// ni el orden en que Supabase devuelve los partidos de cuartos o repechaje.
+// Cuartos (8 equipos): (1 vs 8) vs (4 vs 5), (2 vs 7) vs (3 vs 6).
+// Repechaje (6 equipos): 1 vs ganador (4 vs 5), 2 vs ganador (3 vs 6).
 function crearBorradorSemifinales(preliminares, tabla, cantidad, fecha) {
-  const esperados = cantidad === 8 ? 4 : cantidad === 6 ? 2 : 0
-  if (!esperados || preliminares.length !== esperados) return []
-  const ganadores = preliminares.map((p) => {
-    const resultado = resolverResultadoEliminatoria(p)
-    if (resultado.estado === 'definido') return resultado.ganadorId
-    if (resultado.estado !== 'penales_pendientes') return null
-    // Regla vigente de cuartos/repechaje: si hay empate avanza el mejor clasificado.
-    // No aplicar esta regla a semifinales, final ni tercer lugar.
-    const puestoLocal = tabla.findIndex((e) => Number(e.id) === Number(p.local_id))
-    const puestoVisitante = tabla.findIndex((e) => Number(e.id) === Number(p.visitante_id))
-    if (puestoLocal < 0 || puestoVisitante < 0 || puestoLocal === puestoVisitante) return null
-    return Number(puestoLocal < puestoVisitante ? p.local_id : p.visitante_id)
-  })
-  if (ganadores.some((id) => !id)) return []
+  const crucesPrevios = cantidad === 8
+    ? [[1, 8], [4, 5], [2, 7], [3, 6]]
+    : cantidad === 6 ? [[3, 6], [4, 5]] : []
+  if (!crucesPrevios.length || preliminares.length !== crucesPrevios.length) return []
+
+  const ganadoresPorCruce = new Map()
+  for (const [puestoA, puestoB] of crucesPrevios) {
+    const equipoA = tabla[puestoA - 1]
+    const equipoB = tabla[puestoB - 1]
+    if (!equipoA || !equipoB) {
+      throw new Error('Faltan equipos en la clasificación oficial para generar las semifinales.')
+    }
+
+    // Local y visitante pueden estar invertidos. Solo importan los dos equipos
+    // del cruce original, que se identifican por su posición en la tabla regular.
+    const partidosDelCruce = preliminares.filter((p) =>
+      (Number(p.local_id) === Number(equipoA.id) &&
+        Number(p.visitante_id) === Number(equipoB.id)) ||
+      (Number(p.local_id) === Number(equipoB.id) &&
+        Number(p.visitante_id) === Number(equipoA.id))
+    )
+    if (partidosDelCruce.length !== 1) {
+      throw new Error(`Se esperaba exactamente un partido de ${puestoA}.º vs ${puestoB}.º (${equipoA.nombre} vs ${equipoB.nombre}). Revisa los cuartos/repechaje guardados; no se modificó ningún resultado.`)
+    }
+
+    const resultado = resolverResultadoEliminatoria(partidosDelCruce[0])
+    if (resultado.estado === 'pendiente') {
+      throw new Error(`Falta el resultado definitivo de ${equipoA.nombre} vs ${equipoB.nombre}.`)
+    }
+
+    // En CUARTOS o REPECHAJE, un empate favorece al mejor clasificado.
+    // Esta regla no se usa para semifinal, final o tercer lugar.
+    const ganadorId = resultado.estado === 'definido'
+      ? resultado.ganadorId
+      : Number(equipoA.id) // puestoA siempre es el mejor clasificado del par
+    ganadoresPorCruce.set(`${puestoA}-${puestoB}`, ganadorId)
+  }
+
   const cruces = cantidad === 8
-    ? [[ganadores[0], ganadores[1]], [ganadores[2], ganadores[3]]]
-    : [[tabla[0]?.id, ganadores[1]], [tabla[1]?.id, ganadores[0]]]
+    ? [[ganadoresPorCruce.get('1-8'), ganadoresPorCruce.get('4-5')],
+       [ganadoresPorCruce.get('2-7'), ganadoresPorCruce.get('3-6')]]
+    : [[tabla[0]?.id, ganadoresPorCruce.get('4-5')],
+       [tabla[1]?.id, ganadoresPorCruce.get('3-6')]]
+
   const usados = cruces.flat().map(Number)
   if (usados.some((id) => !Number.isInteger(id) || id <= 0) ||
-      new Set(usados).size !== 4) return []
+      new Set(usados).size !== 4) {
+    throw new Error('Los clasificados a semifinales están incompletos o repetidos. Revisa los cruces guardados.')
+  }
   const nombre = (id) => tabla.find((e) => Number(e.id) === Number(id))?.nombre || `Equipo ${id}`
   return cruces.map(([localId, visitanteId], indice) => ({
     numero: indice + 1, etapa: 'Semifinales',
