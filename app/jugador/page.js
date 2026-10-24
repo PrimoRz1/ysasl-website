@@ -62,25 +62,51 @@ export default function JugadorPage() {
     ['pendiente', 'aprobada'].includes(s.estado)
   )
 
-  // El quitafondos permanece desactivado hasta configurar la API segura.
+  // PILOTO LEONARDO: consultar disponibilidad con la sesión real.
+  // La API privada autoriza solamente a la cuenta vinculada a la ficha #28.
+  // No se procesa ni cobra ninguna fotografía al hacer esta consulta.
   useEffect(() => {
     let activo = true
-    fetch('/api/quitar-fondo', { cache: 'no-store' })
-      .then(res => res.ok ? res.json() : { disponible: false })
-      .then(datos => {
+
+    async function comprobarQuitarFondo() {
+      if (!usuario?.id) {
+        setQuitarFondoDisponible(false)
+        setQuitarFondo(false)
+        return
+      }
+
+      try {
+        const { data: sesion, error: errorSesion } =
+          await supabase.auth.getSession()
+        if (errorSesion || !sesion?.session?.access_token) {
+          throw new Error('No hay sesión activa.')
+        }
+
+        const respuesta = await fetch('/api/quitar-fondo', {
+          cache: 'no-store',
+          headers: {
+            Authorization: `Bearer ${sesion.session.access_token}`
+          }
+        })
+        const datos = respuesta.ok
+          ? await respuesta.json()
+          : { disponible: false }
         if (!activo) return
-        const disponible = datos.disponible === true
+
+        const disponible = datos?.disponible === true
         setQuitarFondoDisponible(disponible)
-        // El jugador recibe la opción activada por defecto; puede desmarcarla.
+        // El jugador autorizado puede desmarcar el procesamiento.
         setQuitarFondo(disponible)
-      })
-      .catch(() => {
+      } catch {
         if (!activo) return
         setQuitarFondoDisponible(false)
         setQuitarFondo(false)
-      })
+      }
+    }
+
+    comprobarQuitarFondo()
     return () => { activo = false }
-  }, [])
+  }, [usuario?.id])
 
   useEffect(() => {
     let activo = true
