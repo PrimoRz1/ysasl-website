@@ -30,8 +30,67 @@ function errorJson(mensaje, estado) {
   })
 }
 
-export async function GET() {
-  return Response.json({ disponible: configurado() }, {
+// PILOTO: solo la ficha #28 de Primitivo Recendez en LA VALLARTA FC (#19).
+// La autorización se comprueba en Supabase usando el token del usuario.
+// No basta con enviar el nombre, el correo o el ID desde el navegador.
+// Para abrir el servicio a toda la liga, restaurar la API general después
+// de completar y revisar la prueba. Nunca quitar esta protección antes.
+const FICHA_PILOTO = 28
+const EQUIPO_PILOTO = 19
+
+async function comprobarAccesoPiloto(request) {
+  const cabecera = request.headers.get('authorization') || ''
+  const coincidencia = /^Bearer\s+(\S+)$/i.exec(cabecera)
+  if (!coincidencia) return { autenticado: false, autorizado: false }
+
+  const token = coincidencia[1]
+  const base = process.env.NEXT_PUBLIC_SUPABASE_URL.replace(/\/$/, '')
+  const anon = process.env.NEXT_PUBLIC_SUPABASE_PUBLISHABLE_KEY ||
+    process.env.NEXT_PUBLIC_SUPABASE_ANON_KEY
+  const headers = { apikey: anon, Authorization: `Bearer ${token}` }
+
+  try {
+    const respuestaAuth = await fetch(`${base}/auth/v1/user`, {
+      headers,
+      cache: 'no-store',
+      signal: AbortSignal.timeout(10000)
+    })
+    if (!respuestaAuth.ok) return { autenticado: false, autorizado: false }
+    const usuario = await respuestaAuth.json()
+    if (!usuario?.id) return { autenticado: false, autorizado: false }
+
+    // Solo la solicitud aprobada que está vinculada a la ficha real #28.
+    const url = new URL(`${base}/rest/v1/solicitudes_jugadores`)
+    url.searchParams.set('select', 'id')
+    url.searchParams.set('usuario_id', `eq.${usuario.id}`)
+    url.searchParams.set('jugador_id', `eq.${FICHA_PILOTO}`)
+    url.searchParams.set('equipo_id', `eq.${EQUIPO_PILOTO}`)
+    url.searchParams.set('estado', 'eq.aprobada')
+    url.searchParams.set('limit', '1')
+
+    const respuestaSolicitud = await fetch(url.toString(), {
+      headers,
+      cache: 'no-store',
+      signal: AbortSignal.timeout(10000)
+    })
+    if (!respuestaSolicitud.ok) {
+      return { autenticado: true, autorizado: false, token }
+    }
+    const solicitudes = await respuestaSolicitud.json()
+    return {
+      autenticado: true,
+      autorizado: Array.isArray(solicitudes) && solicitudes.length > 0,
+      token
+    }
+  } catch {
+    // Si falla cualquier verificación, no se cobra ni se procesa nada.
+    return { autenticado: false, autorizado: false }
+  }
+}
+
+export async function GET(request) {
+  const acceso = configurado() ? await comprobarAccesoPiloto(request) : null
+  return Response.json({ disponible: Boolean(acceso?.autorizado) }, {
     headers: { 'Cache-Control': 'no-store' }
   })
 }
@@ -42,28 +101,17 @@ export async function POST(request) {
     return errorJson('El quitafondos aún no está habilitado.', 503)
   }
 
-  const cabecera = request.headers.get('authorization') || ''
-  const coincidencia = /^Bearer\s+(\S+)$/i.exec(cabecera)
-  if (!coincidencia) return errorJson('Debes iniciar sesión.', 401)
-
-  const token = coincidencia[1]
-  const base = process.env.NEXT_PUBLIC_SUPABASE_URL.replace(/\/$/, '')
-  const anon = (process.env.NEXT_PUBLIC_SUPABASE_PUBLISHABLE_KEY || process.env.NEXT_PUBLIC_SUPABASE_ANON_KEY)
-  const headersSupabase = { apikey: anon, Authorization: `Bearer ${token}` }
-
-  // Comprobar la sesión con Supabase Auth (no confiar solo en el navegador).
-  try {
-    const comprobacion = await fetch(`${base}/auth/v1/user`, {
-      headers: headersSupabase,
-      cache: 'no-store',
-      signal: AbortSignal.timeout(10000)
-    })
-    if (!comprobacion.ok) return errorJson('Sesión inválida.', 401)
-    const usuario = await comprobacion.json()
-    if (!usuario?.id) return errorJson('Sesión inválida.', 401)
-  } catch {
-    return errorJson('No se pudo comprobar la sesión.', 503)
+  // Restricción obligatoria ANTES de reservar cupo o llamar a Leonardo.
+  const acceso = await comprobarAccesoPiloto(request)
+  if (!acceso.autenticado) return errorJson('Debes iniciar sesión.', 401)
+  if (!acceso.autorizado) {
+    return errorJson('Esta prueba está reservada a Primitivo Recendez.', 403)
   }
+
+  const base = process.env.NEXT_PUBLIC_SUPABASE_URL.replace(/\/$/, '')
+  const anon = process.env.NEXT_PUBLIC_SUPABASE_PUBLISHABLE_KEY ||
+    process.env.NEXT_PUBLIC_SUPABASE_ANON_KEY
+  const headersSupabase = { apikey: anon, Authorization: `Bearer ${acceso.token}` }
 
   const largo = Number(request.headers.get('content-length') || 0)
   if (largo > MAX_ORIGINAL + 250000) {
