@@ -50,6 +50,17 @@ function LoginContenido() {
   const tipo = searchParams.get('tipo')
   const tipoAcceso = ['jugador', 'equipo', 'admin'].includes(tipo) ? tipo : ''
 
+  // Conservar la invitación del equipo durante el acceso.
+  // Aceptar únicamente un ID numérico válido; nunca una URL arbitraria.
+  const equipoParametro = searchParams.get('equipo')
+  const equipoNumero = Number(equipoParametro)
+  const equipoInvitado = equipoParametro && /^\d+$/.test(equipoParametro) &&
+    Number.isSafeInteger(equipoNumero) && equipoNumero > 0
+      ? String(equipoNumero)
+      : ''
+  const sufijoEquipo = equipoInvitado ? `&equipo=${equipoInvitado}` : ''
+  const rutaRegistro = equipoInvitado ? `/registro?equipo=${equipoInvitado}` : '/registro'
+
   // 'login' = acceso normal; 'recuperar' = enviar correo;
   // 'nueva' = guardar una nueva contraseña después de abrir el enlace.
   const [modo, setModo] = useState('login')
@@ -110,9 +121,12 @@ function LoginContenido() {
         return
       }
 
-      // La selección verifica los permisos de esta misma cuenta.
-      // No se crean cuentas adicionales ni se concede ningún rol nuevo.
-      router.replace('/mis-paneles')
+      // La invitación conduce al panel del jugador, sin agregarlo al equipo.
+      // El panel debe reconocer ?equipo= y comprobar solicitudes existentes.
+      // Sin invitación se mantiene el selector de paneles de siempre.
+      router.replace(equipoInvitado
+        ? `/jugador?equipo=${equipoInvitado}`
+        : '/mis-paneles')
       router.refresh()
     } catch (err) {
       console.error('Error verificando acceso:', err)
@@ -262,16 +276,24 @@ function LoginContenido() {
             : 'Escribe y confirma tu nueva contraseña.'}
       </p>
 
+      {modo === 'login' && equipoInvitado && (
+        <p style={{ background: '#eef5fc', border: '1px solid #c5dcf2',
+          borderRadius: '6px', padding: '12px', fontSize: '13px' }}>
+          ⚽ Invitación de equipo recibida. Al iniciar sesión irás a tu panel
+          de jugador para revisar el ingreso. No se te incorporará automáticamente.
+        </p>
+      )}
+
       {modo === 'login' && !tipoAcceso && (
         <div style={{ display: 'flex', flexWrap: 'wrap', gap: '10px', marginBottom: '24px' }}>
-          <a href="/login?tipo=jugador" style={estiloOpcion}>⚽ Jugadores</a>
-          <a href="/login?tipo=equipo" style={estiloOpcion}>👥 Administradores de Equipo</a>
+          <a href={`/login?tipo=jugador${sufijoEquipo}`} style={estiloOpcion}>⚽ Jugadores</a>
+          <a href={`/login?tipo=equipo${sufijoEquipo}`} style={estiloOpcion}>👥 Administradores de Equipo</a>
         </div>
       )}
 
       {modo === 'login' && tipoAcceso && (
         <p style={{ fontSize: '13px', marginTop: '-4px', marginBottom: '20px' }}>
-          <a href="/login">Elegir otro acceso</a>
+          <a href={equipoInvitado ? `/login?equipo=${equipoInvitado}` : '/login'}>Elegir otro acceso</a>
         </p>
       )}
 
@@ -387,7 +409,7 @@ function LoginContenido() {
           {tipoAcceso !== 'admin' && (
             <p style={{ marginTop: '25px' }}>
               ¿No tienes cuenta?{' '}
-              <a href="/registro">Regístrate aquí</a>
+              <a href={rutaRegistro}>Regístrate aquí</a>
             </p>
           )}
         </>
