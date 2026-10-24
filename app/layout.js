@@ -23,25 +23,8 @@ export default function RootLayout({ children }) {
           </div>
         </header>
 
-        <section
-          style={{
-            maxWidth: '1100px',
-            margin: '20px auto',
-            padding: '0 15px',
-            textAlign: 'center',
-          }}
-        >
-          <div
-            style={{
-              background: '#f4f7fb',
-              border: '1px solid #ddd',
-              borderRadius: '10px',
-              padding: '25px',
-            }}
-          >
-            <BannerPublicidad />
-          </div>
-        </section>
+        {/* El banner administra su propio ancho y se oculta en /admin. */}
+        <BannerPublicidad />
 
         {children}
 
