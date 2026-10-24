@@ -19,6 +19,7 @@ export default function DelegadoPage() {
   const [equipoId, setEquipoId] = useState('')
   const [solicitudes, setSolicitudes] = useState([])
   const [jugadores, setJugadores] = useState([])
+  const [jugadoresBaja, setJugadoresBaja] = useState([])
   const [cargando, setCargando] = useState(true)
   const [cargandoDatos, setCargandoDatos] = useState(false)
   const [procesando, setProcesando] = useState(null)
@@ -65,7 +66,7 @@ export default function DelegadoPage() {
       setError('')
       setMensaje('')
       try {
-        const [resSolicitudes, resJugadores] = await Promise.all([
+        const [resSolicitudes, resJugadores, resBajas] = await Promise.all([
           supabase.from('solicitudes_jugadores')
             .select('id, nombre, numero, estado, created_at')
             .eq('equipo_id', Number(equipoId))
@@ -75,14 +76,19 @@ export default function DelegadoPage() {
             .select('id, equipo_id, nombre, numero, activo')
             .eq('equipo_id', Number(equipoId))
             .eq('activo', true)
-            .order('nombre')
+            .order('nombre'),
+          supabase.rpc('listar_jugadores_baja_delegado', {
+            p_equipo_id: Number(equipoId)
+          })
         ])
         if (!activo) return
         setSolicitudes(resSolicitudes.error ? [] : (resSolicitudes.data || []))
         setJugadores(resJugadores.error ? [] : (resJugadores.data || []))
+        setJugadoresBaja(resBajas.error ? [] : (Array.isArray(resBajas.data) ? resBajas.data : []))
         const errores = [
           resSolicitudes.error && 'Solicitudes: ' + resSolicitudes.error.message,
-          resJugadores.error && 'Plantilla: ' + resJugadores.error.message
+          resJugadores.error && 'Plantilla: ' + resJugadores.error.message,
+          resBajas.error && 'Jugadores dados de baja: ' + resBajas.error.message
         ].filter(Boolean)
         if (errores.length) setError(errores.join(' | '))
       } catch (err) {
@@ -144,6 +150,15 @@ export default function DelegadoPage() {
     )
     if (duplicado) {
       setError(`Ya existe ${duplicado.nombre} (ID #${duplicado.id}) en la plantilla. No se creó otro registro. Si se trata de otra persona, consulta al Administrador General.`)
+      return
+    }
+
+    const dadoDeBaja = jugadoresBaja.find(j =>
+      Number(j.equipo_id) === Number(equipoId) &&
+      normalizarNombre(j.nombre) === normalizarNombre(nombreLimpio)
+    )
+    if (dadoDeBaja) {
+      setError(`${dadoDeBaja.nombre} ya tiene una ficha dada de baja (ID #${dadoDeBaja.id}). Busca esa ficha en "Jugadores dados de baja"; no crees otra.`)
       return
     }
 
@@ -240,9 +255,85 @@ export default function DelegadoPage() {
       })
       if (errorRPC) throw errorRPC
       setJugadores(actuales => actuales.filter(j => Number(j.id) !== Number(jugador.id)))
+      const { data: bajasActualizadas, error: errorBajas } = await supabase.rpc(
+        'listar_jugadores_baja_delegado', { p_equipo_id: Number(equipoId) }
+      )
+      if (!errorBajas && Array.isArray(bajasActualizadas)) setJugadoresBaja(bajasActualizadas)
       setMensaje(`${jugador.nombre} (ID #${jugador.id}) fue dado de baja de ${nombreEquipo}. Su historial se conserva.`)
     } catch (err) {
       setError('No se pudo dar de baja al jugador: ' + err.message)
+    } finally {
+      setProcesando(null)
+    }
+  }
+
+  async function reactivarJugador(jugador) {
+    if (procesando !== null || cargandoDatos || !equipoId) return
+
+    const pertenece = jugadoresBaja.some(j =>
+      Number(j.id) === Number(jugador.id) &&
+      Number(j.equipo_id) === Number(equipoId)
+    )
+    if (!pertenece) {
+      setError('Esta ficha no corresponde a un jugador dado de baja de tu equipo.')
+      return
+    }
+
+    const yaActivo = jugadores.find(j => normalizarNombre(j.nombre) === normalizarNombre(jugador.nombre))
+    if (yaActivo) {
+      setError(`Ya existe una ficha activa de ${jugador.nombre} (ID #${yaActivo.id}). Consulta al Administrador General.`)
+      return
+    }
+
+    const otrasFichas = jugadoresBaja.filter(j =>
+      Number(j.id) !== Number(jugador.id) &&
+      normalizarNombre(j.nombre) === normalizarNombre(jugador.nombre)
+    )
+    // Nunca reactivar por error una ficha manual si otra ficha del mismo
+    // nombre ya está vinculada a la cuenta del jugador.
+    if (!jugador.cuenta_vinculada && otrasFichas.some(j => j.cuenta_vinculada)) {
+      setError(`Hay otra ficha de ${jugador.nombre} vinculada a su cuenta. Verifica esa ficha antes de reactivar la ID #${jugador.id}.`)
+      return
+    }
+    const advertencia = otrasFichas.length > 0
+      ? `\n\nATENCIÓN: Hay otras fichas dadas de baja con este nombre (ID ${otrasFichas.map(j => '#' + j.id).join(', ')}). Verifica cuál conserva el historial oficial ANTES de reactivar.`
+      : ''
+
+    const confirmado = window.confirm(
+      `¿Reactivar a ${jugador.nombre} (ID #${jugador.id}) en ${nombreEquipo}?` +
+      `\n\nSe conservará la misma ficha y su historial de goles y tarjetas.` +
+      advertencia +
+      `\n\n¿Confirmas que este es el ID correcto?`
+    )
+    if (!confirmado) return
+
+    setProcesando(`reactivar-${jugador.id}`)
+    setMensaje('')
+    setError('')
+    try {
+      const { data: idReactivado, error: errorRPC } = await supabase.rpc('reactivar_jugador_delegado', {
+        p_jugador_id: Number(jugador.id)
+      })
+      if (errorRPC) throw errorRPC
+      if (idReactivado === null || idReactivado === undefined) throw new Error('No se confirmó la reactivación.')
+
+      const [resJugadores, resBajas] = await Promise.all([
+        supabase.from('jugadores')
+          .select('id, equipo_id, nombre, numero, activo')
+          .eq('equipo_id', Number(equipoId))
+          .eq('activo', true)
+          .order('nombre'),
+        supabase.rpc('listar_jugadores_baja_delegado', { p_equipo_id: Number(equipoId) })
+      ])
+      if (resJugadores.error || resBajas.error) {
+        setError('Se reactivó la ficha, pero no se pudo actualizar la lista. Recarga la página.')
+      } else {
+        setJugadores(resJugadores.data || [])
+        setJugadoresBaja(Array.isArray(resBajas.data) ? resBajas.data : [])
+      }
+      setMensaje(`${jugador.nombre} (ID #${jugador.id}) fue reactivado sin crear otra ficha. Su historial se conserva.`)
+    } catch (err) {
+      setError('No se pudo reactivar al jugador: ' + (err?.message || 'Error desconocido.'))
     } finally {
       setProcesando(null)
     }
@@ -286,6 +377,7 @@ export default function DelegadoPage() {
               setEnlaceManual('')
               setSolicitudes([])
               setJugadores([])
+              setJugadoresBaja([])
               setNuevoNombre('')
               setNuevoNumero('')
               setMensaje('')
@@ -470,6 +562,76 @@ export default function DelegadoPage() {
                       style={{ ...estiloBoton, background: '#b91c1c' }}
                     >
                       {procesando === `baja-${jugador.id}` ? 'Procesando...' : 'Dar de baja'}
+                    </button>
+                  </div>
+                )
+              })}
+            </>
+          )}
+
+          <hr style={{ margin: '30px 0' }} />
+          <h2>Jugadores dados de baja</h2>
+          <p>
+            Puedes reactivar una ficha existente de <strong>{nombreEquipo}</strong> sin
+            crear otra. Por ahora, esta función solo reactiva jugadores del mismo equipo;
+            las transferencias desde otros equipos se agregarán después.
+            Revisa el ID y su historial antes de hacerlo. Si hay dos
+            fichas con el mismo nombre, pide al Administrador General verificar
+            cuál es la correcta.
+          </p>
+          {cargandoDatos ? (
+            <p>Cargando jugadores dados de baja...</p>
+          ) : jugadoresBaja.length === 0 ? (
+            <p>No hay jugadores dados de baja en este equipo.</p>
+          ) : (
+            <>
+              <p><strong>Jugadores dados de baja: {jugadoresBaja.length}</strong></p>
+              {jugadoresBaja.map(jugador => {
+                const posibles = jugadoresBaja.filter(j =>
+                  normalizarNombre(j.nombre) === normalizarNombre(jugador.nombre)
+                )
+                const duplicado = posibles.length > 1
+                const fichaManualConDuplicadoVinculado = !jugador.cuenta_vinculada &&
+                  posibles.some(j => Number(j.id) !== Number(jugador.id) && j.cuenta_vinculada)
+                return (
+                  <div key={jugador.id} style={{
+                    border: '1px solid #ddd', borderRadius: '8px',
+                    padding: '14px', marginBottom: '10px',
+                    display: 'flex', alignItems: 'center',
+                    justifyContent: 'space-between', gap: '14px', flexWrap: 'wrap'
+                  }}>
+                    <div>
+                      <strong>{jugador.nombre}</strong>
+                      <div style={{ fontSize: '13px', color: '#555', marginTop: '4px' }}>
+                        ID #{jugador.id} · Camiseta: {jugador.numero ?? 'Sin número'}
+                      </div>
+                      <div style={{ fontSize: '13px', color: jugador.cuenta_vinculada ? '#166534' : '#555', marginTop: '4px' }}>
+                        {jugador.cuenta_vinculada ? 'Cuenta de jugador vinculada' : 'Sin cuenta vinculada'}
+                        {' · '}{jugador.tiene_foto ? 'Con fotografía' : 'Sin fotografía'}
+                        {' · '}Eventos: {jugador.eventos_partido ?? 0}
+                        {' · '}Suspensiones: {jugador.suspensiones ?? 0}
+                      </div>
+                      {duplicado && (
+                        <div style={{ color: '#9a6700', fontSize: '13px', marginTop: '4px' }}>
+                          Posible duplicado (ID {posibles.map(j => '#' + j.id).join(', ')}):
+                          verifica cuál conserva el historial oficial antes de reactivar.
+                        </div>
+                      )}
+                      {fichaManualConDuplicadoVinculado && (
+                        <div style={{ color: '#b91c1c', fontSize: '13px', marginTop: '4px' }}>
+                          Esta ficha manual está bloqueada porque existe otra ficha del mismo
+                          nombre vinculada a una cuenta. Consulta al Administrador General.
+                        </div>
+                      )}
+                    </div>
+                    <button
+                      type="button"
+                      disabled={procesando !== null || cargandoDatos || fichaManualConDuplicadoVinculado}
+                      onClick={() => reactivarJugador(jugador)}
+                      style={{ ...estiloBoton, background: fichaManualConDuplicadoVinculado ? '#777' : '#16803c' }}
+                    >
+                      {fichaManualConDuplicadoVinculado ? 'Revisión requerida' :
+                        procesando === `reactivar-${jugador.id}` ? 'Reactivando...' : 'Reactivar'}
                     </button>
                   </div>
                 )
