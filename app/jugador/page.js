@@ -6,6 +6,7 @@ import { supabase } from '../../lib/supabase'
 
 function obtenerEquipoInvitado(valor) {
   if (typeof valor !== 'number' && typeof valor !== 'string') return null
+  if (typeof valor === 'string' && !/^\d+$/.test(valor)) return null
   const id = Number(valor)
   return Number.isSafeInteger(id) && id > 0 ? id : null
 }
@@ -80,7 +81,13 @@ export default function JugadorPage() {
         if (!activo) return
 
         if (errorAuth || !auth.user) {
-          router.replace('/login')
+          // Conservar el equipo de la invitación si aún no inició sesión.
+          const equipoEnlace = obtenerEquipoInvitado(
+            new URLSearchParams(window.location.search).get('equipo')
+          )
+          router.replace(equipoEnlace
+            ? `/login?equipo=${equipoEnlace}`
+            : '/login')
           return
         }
 
@@ -169,9 +176,13 @@ export default function JugadorPage() {
           }
         }
 
-        // El registro por invitación guardó este dato en Supabase Auth.
-        // Si no hay invitación, el jugador conserva el registro normal.
-        const invitacionId = obtenerEquipoInvitado(
+        // Invitación de equipo: reconocer tanto el enlace usado por una
+        // cuenta EXISTENTE (?equipo=19) como el dato guardado al registrarse.
+        // El enlace tiene prioridad, pero nunca concede ingreso por sí mismo.
+        const equipoEnlace = obtenerEquipoInvitado(
+          new URLSearchParams(window.location.search).get('equipo')
+        )
+        const invitacionId = equipoEnlace ?? obtenerEquipoInvitado(
           user.user_metadata?.equipo_invitacion
         )
 
