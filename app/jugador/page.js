@@ -50,6 +50,18 @@ export default function JugadorPage() {
   const [mensajeInvitacion, setMensajeInvitacion] = useState('')
   const [errorInvitacion, setErrorInvitacion] = useState('')
 
+  // Una solicitud aprobada con ficha vinculada significa que ya pertenece a la plantilla.
+  const solicitudAprobada = solicitudes.find(s =>
+    s.estado === 'aprobada' && s.jugador_id != null
+  )
+  const equipoActual = solicitudAprobada
+    ? equipos.find(e => Number(e.id) === Number(solicitudAprobada.equipo_id))
+    : null
+  const solicitudEnEquipoSeleccionado = solicitudes.find(s =>
+    equipoId !== '' && Number(s.equipo_id) === Number(equipoId) &&
+    ['pendiente', 'aprobada'].includes(s.estado)
+  )
+
   // El quitafondos permanece desactivado hasta configurar la API segura.
   useEffect(() => {
     let activo = true
@@ -200,6 +212,17 @@ export default function JugadorPage() {
           return
         }
 
+        // Ya tiene ficha aprobada: no crear solicitudes automáticas adicionales.
+        if (aprobada) {
+          const equipoPertenencia = listaEquipos.find(e =>
+            Number(e.id) === Number(aprobada.equipo_id)
+          )
+          setMensaje('Ya perteneces a ' +
+            (equipoPertenencia?.nombre || 'un equipo') +
+            '. No necesitas solicitar ingreso nuevamente.')
+          return
+        }
+
         setEquipoId(String(invitacionId))
         setEquipoInvitadoNombre(equipoInvitado.nombre)
 
@@ -309,6 +332,12 @@ export default function JugadorPage() {
     setError('')
     setMensaje('')
 
+    if (solicitudAprobada) {
+      setError('Ya perteneces a ' + (equipoActual?.nombre || 'un equipo') +
+        '. No necesitas enviar otra solicitud.')
+      return
+    }
+
     const idSeleccionado = Number(equipoId)
 
     if (!usuario || !Number.isSafeInteger(idSeleccionado) ||
@@ -354,6 +383,19 @@ export default function JugadorPage() {
     setGuardando(true)
 
     try {
+      // Confirmar que no fue aprobado para una plantilla desde otra sesión.
+      const { data: aprobacionesActuales, error: errorAprobaciones } = await supabase
+        .from('solicitudes_jugadores')
+        .select('id, jugador_id')
+        .eq('usuario_id', usuario.id)
+        .eq('estado', 'aprobada')
+
+      if (errorAprobaciones) throw errorAprobaciones
+      if ((aprobacionesActuales || []).some(s => s.jugador_id != null)) {
+        setError('Ya perteneces a un equipo. Actualiza la página para ver tu plantilla.')
+        return
+      }
+
       // Volvemos a revisar antes de insertar por si hubo cambios
       // desde que se cargó la página.
       const { data: existentes, error: errorExistentes } = await supabase
@@ -759,7 +801,7 @@ export default function JugadorPage() {
         )}
       </section>
 
-      {equipoInvitadoNombre && (
+      {equipoInvitadoNombre && !solicitudAprobada && (
         <div style={{
           border: '1px solid #bfd7f0',
           borderRadius: '8px',
@@ -940,61 +982,82 @@ export default function JugadorPage() {
         )}
       </section>
 
-      <h2>Solicitar ingreso a un equipo</h2>
+      {solicitudAprobada ? (
+        <section role="status" style={{
+          padding: '20px', border: '1px solid #86efac',
+          background: '#f0fdf4', borderRadius: '10px', marginBottom: '25px'
+        }}>
+          <h2 style={{ marginTop: 0, color: '#166534' }}>
+            Ya perteneces a {equipoActual?.nombre || 'tu equipo'}
+          </h2>
+          <p>Tu solicitud fue aprobada y ya tienes una ficha de jugador.
+            No necesitas solicitar ingreso nuevamente.</p>
+        </section>
+      ) : (
+        <>
+          <h2>Solicitar ingreso a un equipo</h2>
 
-      <form onSubmit={solicitarIngreso}>
-        <label htmlFor="nombre-jugador">Nombre completo</label>
-        <input
-          id="nombre-jugador"
-          value={nombre}
-          onChange={e => setNombre(e.target.value)}
-          required
-          maxLength={120}
-          style={inputStyle}
-        />
+          <form onSubmit={solicitarIngreso}>
+            <label htmlFor="nombre-jugador">Nombre completo</label>
+            <input
+              id="nombre-jugador"
+              value={nombre}
+              onChange={e => setNombre(e.target.value)}
+              required
+              maxLength={120}
+              style={inputStyle}
+            />
 
-        <label htmlFor="equipo-jugador">Seleccionar equipo</label>
-        <select
-          id="equipo-jugador"
-          value={equipoId}
-          onChange={e => setEquipoId(e.target.value)}
-          required
-          style={inputStyle}
-        >
-          <option value="">Selecciona tu equipo</option>
-          {equipos.map(equipo => (
-            <option key={equipo.id} value={equipo.id}>
-              {equipo.nombre}
-            </option>
-          ))}
-        </select>
+            <label htmlFor="equipo-jugador">Seleccionar equipo</label>
+            <select
+              id="equipo-jugador"
+              value={equipoId}
+              onChange={e => setEquipoId(e.target.value)}
+              required
+              style={inputStyle}
+            >
+              <option value="">Selecciona tu equipo</option>
+              {equipos.map(equipo => (
+                <option key={equipo.id} value={equipo.id}>
+                  {equipo.nombre}
+                </option>
+              ))}
+            </select>
 
-        <label htmlFor="numero-jugador">Número de camiseta (opcional)</label>
-        <input
-          id="numero-jugador"
-          type="number"
-          min="0"
-          max="999"
-          value={numero}
-          onChange={e => setNumero(e.target.value)}
-          style={inputStyle}
-        />
+            <label htmlFor="numero-jugador">Número de camiseta (opcional)</label>
+            <input
+              id="numero-jugador"
+              type="number"
+              min="0"
+              max="999"
+              value={numero}
+              onChange={e => setNumero(e.target.value)}
+              style={inputStyle}
+            />
 
-        <button
-          type="submit"
-          disabled={guardando || equipos.length === 0}
-          style={{
-            background: '#0b2948',
-            color: 'white',
-            padding: '13px 20px',
-            border: 'none',
-            borderRadius: '6px',
-            cursor: guardando ? 'wait' : 'pointer'
-          }}
-        >
-          {guardando ? 'Enviando...' : 'Solicitar ingreso'}
-        </button>
-      </form>
+            {solicitudEnEquipoSeleccionado && (
+              <p role="status" style={{ color: '#166534' }}>
+                Ya tienes una solicitud para este equipo (estado: {solicitudEnEquipoSeleccionado.estado}).
+              </p>
+            )}
+
+            <button
+              type="submit"
+              disabled={guardando || equipos.length === 0 || !!solicitudEnEquipoSeleccionado}
+              style={{
+                background: '#0b2948',
+                color: 'white',
+                padding: '13px 20px',
+                border: 'none',
+                borderRadius: '6px',
+                cursor: guardando ? 'wait' : 'pointer'
+              }}
+            >
+              {guardando ? 'Enviando...' : 'Solicitar ingreso'}
+            </button>
+          </form>
+        </>
+      )}
 
       {mensaje && (
         <p role="status" style={{ color: 'green' }}>
