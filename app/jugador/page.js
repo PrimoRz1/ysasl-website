@@ -867,6 +867,8 @@ export default function JugadorPage() {
         {errorInvitacion && <p role="alert" style={{ color: '#b91c1c' }}>{errorInvitacion}</p>}
       </section>
 
+      {/* Quien ya tiene una ficha aprobada no debe solicitar aparecer como jugador libre. */}
+      {!solicitudAprobada && (
       <section style={{
         border: '1px solid #cbd5e1',
         borderRadius: '10px',
@@ -981,6 +983,7 @@ export default function JugadorPage() {
           <p role="alert" style={{ color: '#b91c1c' }}>{errorLibre}</p>
         )}
       </section>
+      )}
 
       {solicitudAprobada ? (
         <section role="status" style={{
