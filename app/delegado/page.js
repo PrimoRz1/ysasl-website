@@ -28,6 +28,12 @@ export default function DelegadoPage() {
   const [enlaceManual, setEnlaceManual] = useState('')
   const [nuevoNombre, setNuevoNombre] = useState('')
   const [nuevoNumero, setNuevoNumero] = useState('')
+  // Consulta de solo lectura: jugadores dados de baja de otros equipos.
+  const [busquedaOtros, setBusquedaOtros] = useState('')
+  const [resultadosOtros, setResultadosOtros] = useState([])
+  const [busquedaOtrosRealizada, setBusquedaOtrosRealizada] = useState(false)
+  const [buscandoOtros, setBuscandoOtros] = useState(false)
+  const [errorBusquedaOtros, setErrorBusquedaOtros] = useState('')
 
   useEffect(() => {
     let activo = true
@@ -339,6 +345,35 @@ export default function DelegadoPage() {
     }
   }
 
+  async function buscarJugadoresOtrosEquipos(evento) {
+    evento.preventDefault()
+    if (!equipoId || buscandoOtros || procesando !== null) return
+
+    const nombre = busquedaOtros.trim().replace(/\s+/g, ' ')
+    setErrorBusquedaOtros('')
+    setResultadosOtros([])
+    setBusquedaOtrosRealizada(false)
+    if (nombre.length < 3 || nombre.length > 80) {
+      setErrorBusquedaOtros('Escribe entre 3 y 80 caracteres para buscar.')
+      return
+    }
+
+    setBuscandoOtros(true)
+    try {
+      const { data, error: errorRPC } = await supabase.rpc('buscar_bajas_otros_equipos_delegado', {
+        p_equipo_destino: Number(equipoId),
+        p_busqueda: nombre
+      })
+      if (errorRPC) throw errorRPC
+      setResultadosOtros(Array.isArray(data) ? data : [])
+      setBusquedaOtrosRealizada(true)
+    } catch (err) {
+      setErrorBusquedaOtros('No se pudo realizar la búsqueda: ' + (err?.message || 'Error desconocido.'))
+    } finally {
+      setBuscandoOtros(false)
+    }
+  }
+
   async function cerrarSesion() {
     const { error: errorSalida } = await supabase.auth.signOut()
     if (errorSalida) {
@@ -380,6 +415,10 @@ export default function DelegadoPage() {
               setJugadoresBaja([])
               setNuevoNombre('')
               setNuevoNumero('')
+              setBusquedaOtros('')
+              setResultadosOtros([])
+              setBusquedaOtrosRealizada(false)
+              setErrorBusquedaOtros('')
               setMensaje('')
               setError('')
             }}
@@ -439,7 +478,8 @@ export default function DelegadoPage() {
               Registra un jugador en <strong>{nombreEquipo}</strong> sin esperar
               a que solicite ingreso. Solamente puedes agregar jugadores a tus equipos.
               Si el jugador ya aparece en la plantilla, no crees otra ficha:
-              podrá vincular su cuenta más adelante.
+              podrá vincular su cuenta más adelante. Si estuvo en otro equipo,
+              utiliza primero la búsqueda de bajas que aparece más abajo.
             </p>
             <form onSubmit={agregarJugador}>
               <label htmlFor="nombre-jugador-nuevo">Nombre completo</label>
@@ -567,6 +607,78 @@ export default function DelegadoPage() {
                 )
               })}
             </>
+          )}
+
+          <hr style={{ margin: '30px 0' }} />
+          <h2>Buscar jugadores dados de baja de otros equipos</h2>
+          <p>
+            Busca por nombre a un jugador que estuvo en otro equipo. Esta sección
+            solo consulta fichas inactivas; <strong>no transfiere ni reactiva</strong>
+            jugadores de otros equipos. Si tiene cuenta registrada, deberá
+            solicitar ingreso a {nombreEquipo} usando la invitación del equipo.
+            Si no tiene cuenta vinculada, el Administrador General deberá
+            verificar su identidad antes de incorporarlo.
+          </p>
+          <form onSubmit={buscarJugadoresOtrosEquipos} style={{ marginBottom: '16px' }}>
+            <label htmlFor="busqueda-jugadores-otros">Nombre del jugador (3 a 80 caracteres)</label>
+            <div style={{ display: 'flex', flexWrap: 'wrap', gap: '10px', marginTop: '8px' }}>
+              <input
+                id="busqueda-jugadores-otros"
+                type="search"
+                autoComplete="off"
+                placeholder="Ejemplo: Ramiro Cruz"
+                value={busquedaOtros}
+                onChange={e => {
+                  setBusquedaOtros(e.target.value)
+                  setResultadosOtros([])
+                  setBusquedaOtrosRealizada(false)
+                  setErrorBusquedaOtros('')
+                }}
+                maxLength={80}
+                disabled={buscandoOtros || procesando !== null || cargandoDatos}
+                style={{ flex: '1 1 220px', minWidth: '180px', padding: '10px' }}
+              />
+              <button
+                type="submit"
+                disabled={!equipoId || buscandoOtros || procesando !== null || cargandoDatos}
+                style={{ ...estiloBoton, background: '#0b2948' }}
+              >
+                {buscandoOtros ? 'Buscando...' : 'Buscar'}
+              </button>
+            </div>
+          </form>
+          {errorBusquedaOtros && <p role="alert" style={{ color: '#b91c1c' }}>{errorBusquedaOtros}</p>}
+          {busquedaOtrosRealizada && resultadosOtros.length === 0 && (
+            <p role="status">No se encontraron jugadores dados de baja en otros equipos con ese nombre.</p>
+          )}
+          {resultadosOtros.length > 0 && (
+            <div aria-live="polite">
+              <p><strong>Coincidencias: {resultadosOtros.length}</strong></p>
+              {resultadosOtros.map(jugador => (
+                <div key={jugador.ficha_id} style={{
+                  border: '1px solid #ddd', borderRadius: '8px',
+                  padding: '14px', marginBottom: '10px'
+                }}>
+                  <strong>{jugador.nombre}</strong>
+                  <div style={{ fontSize: '13px', color: '#555', marginTop: '4px' }}>
+                    Ficha #{jugador.ficha_id} · Equipo anterior: {jugador.equipo_origen}
+                  </div>
+                  <div style={{ fontSize: '13px', color: '#555', marginTop: '4px' }}>
+                    {jugador.tiene_cuenta ? 'Con cuenta vinculada' : 'Sin cuenta vinculada'}
+                    {' · '}{jugador.tiene_foto ? 'Con fotografía' : 'Sin fotografía'}
+                    {' · '}Eventos: {jugador.eventos ?? 0}
+                    {' · '}Suspensiones: {jugador.suspensiones ?? 0}
+                  </div>
+                  <div style={{ fontSize: '13px', marginTop: '8px', color: '#7c4a00' }}>
+                    {jugador.estado_incorporacion === 'ya_activo_en_otro_equipo'
+                      ? 'No disponible: esta identidad ya tiene una ficha activa. Primero debe darse de baja.'
+                      : jugador.estado_incorporacion === 'requiere_solicitud_del_jugador'
+                        ? 'Siguiente paso: el jugador debe solicitar ingreso mediante la invitación del equipo. No crees otra ficha manual.'
+                        : 'Requiere revisión del Administrador General para confirmar la identidad antes de incorporarlo.'}
+                  </div>
+                </div>
+              ))}
+            </div>
           )}
 
           <hr style={{ margin: '30px 0' }} />
