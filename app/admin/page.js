@@ -159,16 +159,13 @@ export default function AdminPage() {
           href="/admin/configurar-torneo"
         />
         <AdminCard titulo="Inscripciones" descripcion="Revisar y aprobar solicitudes de equipos" href="/admin/inscripciones" />
-        <AdminCard
-          titulo="👥 Administrar Delegados"
-          descripcion="Asignar delegados a equipos y controlar sus accesos"
-          href="/admin/delegados"
-        />
-  <AdminCard
-  titulo="🔐 Administradores Generales"
-  descripcion="Nombrar administradores y administrar sus accesos"
+        
+<AdminCard
+  titulo="👥 Administrar Usuarios"
+  descripcion="Administrar usuarios, permisos generales y delegados de equipos"
   href="/admin/usuarios"
 />
+
       </div>
     </main>
   )
