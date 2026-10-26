@@ -246,16 +246,22 @@ function crearBorradorSemifinales(preliminares, tabla, cantidad, fecha) {
       throw new Error(`Se esperaba exactamente un partido de ${puestoA}.º vs ${puestoB}.º (${equipoA.nombre} vs ${equipoB.nombre}). Revisa los cuartos/repechaje guardados; no se modificó ningún resultado.`)
     }
 
-    const resultado = resolverResultadoEliminatoria(partidosDelCruce[0])
-    if (resultado.estado === 'pendiente') {
+    // Cuartos y repechaje: si hay empate, avanza el mejor clasificado.
+    // Esta regla NO usa penales (reservados para final y tercer lugar).
+    const partidoPrevio = partidosDelCruce[0]
+    const gl = Number(partidoPrevio.goles_local)
+    const gv = Number(partidoPrevio.goles_visitante)
+    if (partidoPrevio.estado !== 'finalizado' ||
+      partidoPrevio.goles_local == null || partidoPrevio.goles_visitante == null ||
+      ![gl, gv].every((n) => Number.isSafeInteger(n) && n >= 0)) {
       throw new Error(`Falta el resultado definitivo de ${equipoA.nombre} vs ${equipoB.nombre}.`)
     }
 
-    // En CUARTOS o REPECHAJE, un empate favorece al mejor clasificado.
-    // La misma regla se aplica a semifinales al preparar la final.
-    const ganadorId = resultado.estado === 'definido'
-      ? resultado.ganadorId
-      : Number(equipoA.id) // puestoA siempre es el mejor clasificado del par
+    const ganadorId = gl === gv
+      ? Number(equipoA.id) // puestoA siempre es el mejor clasificado del cruce
+      : gl > gv
+        ? Number(partidoPrevio.local_id)
+        : Number(partidoPrevio.visitante_id)
     ganadoresPorCruce.set(`${puestoA}-${puestoB}`, ganadorId)
   }
 
