@@ -718,8 +718,9 @@ export default async function Home() {
           <div
             style={{
               display: 'grid',
-              gridTemplateColumns: 'repeat(auto-fit, minmax(300px, 650px))',
-justifyContent: 'center',
+              gridTemplateColumns: 'repeat(auto-fit, minmax(min(100%, 300px), 650px))',
+              justifyContent: 'center',
+              justifyItems: 'center',
               gap: '20px',
               marginTop: '25px'
             }}
@@ -734,6 +735,7 @@ justifyContent: 'center',
   background: 'white',
   maxWidth: '650px',
   width: '100%',
+  minWidth: 0,
   boxSizing: 'border-box',
   margin: '0 auto',
   textAlign: 'center'
@@ -744,8 +746,12 @@ justifyContent: 'center',
                     src={patrocinador.imagen_url}
                     alt={patrocinador.nombre}
                     style={{
+                      display: 'block',
+                      width: '100%',
                       maxWidth: '400px',
+                      height: 'auto',
                       maxHeight: '220px',
+                      margin: '0 auto',
                       objectFit: 'contain'
                     }}
                   />
