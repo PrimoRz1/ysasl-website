@@ -27,13 +27,13 @@ export default function InscripcionesPage() {
             supabase
               .from('temporadas')
               .select('id, nombre')
+            .eq('inscripciones_abiertas', true)
               
               .order('id', { ascending: false }),
 
             supabase
               .from('divisiones')
               .select('id, nombre, temporada_id')
-            .eq('inscripciones_abiertas', true)
               .order('orden', { ascending: true })
           ])
 
