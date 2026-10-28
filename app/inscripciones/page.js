@@ -1,4 +1,3 @@
-
 'use client'
 
 import { useEffect, useState } from 'react'
@@ -22,20 +21,18 @@ export default function InscripcionesPage() {
   useEffect(() => {
     async function cargarOpciones() {
       try {
-        const [resultadoTorneos, resultadoDivisiones] =
-          await Promise.all([
-            supabase
-              .from('temporadas')
-              .select('id, nombre')
+        const [resultadoTorneos, resultadoDivisiones] = await Promise.all([
+          supabase
+            .from('temporadas')
+            .select('id, nombre')
             .eq('inscripciones_abiertas', true)
-              
-              .order('id', { ascending: false }),
+            .order('id', { ascending: false }),
 
-            supabase
-              .from('divisiones')
-              .select('id, nombre, temporada_id')
-              .order('orden', { ascending: true })
-          ])
+          supabase
+            .from('divisiones')
+            .select('id, nombre, temporada_id')
+            .order('orden', { ascending: true })
+        ])
 
         if (resultadoTorneos.error) {
           throw resultadoTorneos.error
@@ -47,16 +44,16 @@ export default function InscripcionesPage() {
 
         const divisionesAbiertas = resultadoDivisiones.data || []
 
-const torneosDisponibles = (resultadoTorneos.data || []).filter(
-  (torneo) =>
-    divisionesAbiertas.some(
-      (division) =>
-        Number(division.temporada_id) === Number(torneo.id)
-    )
-)
+        const torneosDisponibles = (resultadoTorneos.data || []).filter(
+          (torneo) =>
+            divisionesAbiertas.some(
+              (division) =>
+                Number(division.temporada_id) === Number(torneo.id)
+            )
+        )
 
-setTorneos(torneosDisponibles)
-setDivisiones(divisionesAbiertas)
+        setTorneos(torneosDisponibles)
+        setDivisiones(divisionesAbiertas)
       } catch (error) {
         console.error(error)
         setErrorCarga(
@@ -99,7 +96,7 @@ setDivisiones(divisionesAbiertas)
         .insert({
           temporada_id: Number(torneoId),
           division_id: Number(divisionId),
-          nombre_equipo: nombreEquipo.trim(),
+          nombre_equipo: nombreEquipo.trim().toUpperCase(),
           representante: representante.trim(),
           telefono: telefono.trim(),
           correo: correo.trim() || null,
@@ -220,7 +217,7 @@ setDivisiones(divisionesAbiertas)
               style={campo}
               required
               value={nombreEquipo}
-              onChange={(e) => setNombreEquipo(e.target.value)}
+              onChange={(e) => setNombreEquipo(e.target.value.toUpperCase())}
             />
           </label>
 
