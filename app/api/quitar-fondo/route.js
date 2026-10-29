@@ -226,24 +226,58 @@ export async function POST(request) {
       signal: AbortSignal.timeout(45000)
     })
 
+    // Diagnóstico seguro: NO registrar fotografías, base64, tokens, claves,
+    // correos, URLs de imágenes ni el cuerpo completo de Leonardo.
     if (respuesta.status === 402) {
+      console.warn('[YSASL Leonardo] Sin crédito', { httpStatus: 402 })
       return errorJson('No hay crédito disponible para procesar fotografías.', 503)
     }
     if (respuesta.status === 429) {
+      console.warn('[YSASL Leonardo] Límite del proveedor', { httpStatus: 429 })
       return errorJson('El servicio está ocupado. Intenta más tarde.', 429)
     }
     if (!respuesta.ok) {
+      console.warn('[YSASL Leonardo] Error HTTP', { httpStatus: respuesta.status })
       return errorJson('Leonardo no pudo procesar esta fotografía.', 502)
     }
 
-    // Leonardo puede devolver errores dentro de un HTTP 200.
-    const datos = await respuesta.json()
-    if (Array.isArray(datos?.errors) && datos.errors.length) {
+    let datos
+    try {
+      datos = await respuesta.json()
+    } catch {
+      console.warn('[YSASL Leonardo] JSON inválido', {
+        httpStatus: respuesta.status,
+        contentType: respuesta.headers.get('content-type') || 'no indicado'
+      })
+      return errorJson('Leonardo respondió con un formato inesperado.', 502)
+    }
+
+    const resultados = Array.isArray(datos?.results) ? datos.results : []
+    const errores = Array.isArray(datos?.errors) ? datos.errors : []
+    const bloqueadas = Number.isInteger(datos?.blockedCount) ? datos.blockedCount : 0
+    const diagnostico = {
+      httpStatus: respuesta.status,
+      generationId: typeof datos?.id === 'string' ? datos.id : null,
+      resultsArray: Array.isArray(datos?.results),
+      resultsCount: resultados.length,
+      blockedCount: bloqueadas,
+      errorsCount: errores.length,
+      costAmount: typeof datos?.cost?.amount === 'string' ? datos.cost.amount : null,
+      costUnit: typeof datos?.cost?.unit === 'string' ? datos.cost.unit : null
+    }
+
+    // Un HTTP 200 no garantiza que Leonardo haya entregado una imagen.
+    if (errores.length) {
+      console.warn('[YSASL Leonardo] Errores en respuesta 200', diagnostico)
       return errorJson('Leonardo rechazó la fotografía o no pudo procesarla.', 502)
     }
-    urlResultado = datos?.results?.[0]?.url
+    urlResultado = resultados[0]?.url
     if (!urlResultado || typeof urlResultado !== 'string') {
-      return errorJson('Leonardo no devolvió una imagen procesada.', 502)
+      console.warn('[YSASL Leonardo] Sin imagen en respuesta 200', diagnostico)
+      if (bloqueadas > 0) {
+        return errorJson('Leonardo bloqueó el resultado de esta fotografía. Se conservó la original.', 502)
+      }
+      return errorJson('Leonardo respondió sin una imagen procesada. Se conservó la original.', 502)
     }
   } catch {
     return errorJson('El procesamiento tardó demasiado o no respondió.', 502)
