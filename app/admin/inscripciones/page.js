@@ -181,87 +181,149 @@ export default function AdminInscripciones() {
 
     let equipoOriginal = null
     let equipoActualizado = false
+    let nombreEquipoTrasActualizacion = null
+    let solicitudReconciliada = false
 
     try {
-      // Si ya fue aprobada, no podemos asumir que una solicitud y un equipo
-      // están vinculados solo porque sus nombres son parecidos. Verificamos
-      // coincidencia única por nombre/división y la inscripción oficial.
+      // Una solicitud aprobada puede conservar el nombre anterior si el equipo
+      // ya fue renombrado desde Administración → Equipos.
+      // Solo se modifica el equipo oficial cuando existe una coincidencia
+      // única y comprobable en la misma división.
       if (solicitud.estado === 'aprobada' && (cambioNombre || cambioTelefono)) {
         if (!solicitud.division_id) {
-          throw new Error(
-            'Esta solicitud aprobada no tiene división. No se puede identificar con seguridad el equipo oficial. Revisa Administrar Equipos antes de modificar su nombre o teléfono.'
+          if (!window.confirm(
+            'Esta solicitud no tiene una división válida para localizar el equipo oficial.\n\n' +
+            '¿Guardar SOLAMENTE los datos de la solicitud, sin modificar ningún equipo oficial?'
+          )) return
+        } else {
+          const { data: equiposDivision, error: errorEquipos } = await supabase
+            .from('equipos')
+            .select('id, nombre, telefono')
+            .eq('division_id', solicitud.division_id)
+
+          if (errorEquipos) {
+            throw new Error('No se pudieron consultar los equipos oficiales: ' + errorEquipos.message)
+          }
+
+          const equipos = equiposDivision || []
+          const coincidenciasOriginales = equipos.filter(
+            equipo => nombreEnMayusculas(equipo.nombre) ===
+              nombreEnMayusculas(solicitud.nombre_equipo)
           )
-        }
-
-        const { data: equiposDivision, error: errorEquipos } = await supabase
-          .from('equipos')
-          .select('id, nombre, telefono')
-          .eq('division_id', solicitud.division_id)
-
-        if (errorEquipos) {
-          throw new Error('No se pudo verificar el equipo oficial: ' + errorEquipos.message)
-        }
-
-        const coincidencias = (equiposDivision || []).filter(
-          equipo => nombreEnMayusculas(equipo.nombre) ===
-            nombreEnMayusculas(solicitud.nombre_equipo)
-        )
-
-        if (coincidencias.length !== 1) {
-          throw new Error(
-            'No se identificó un único equipo oficial con el nombre y división originales. No se guardó nada. Revisa el equipo en Administración → Equipos.'
+          const coincidenciasNuevas = equipos.filter(
+            equipo => nombreEnMayusculas(equipo.nombre) === cambios.nombre_equipo
           )
+
+          if (coincidenciasOriginales.length > 1 || coincidenciasNuevas.length > 1) {
+            throw new Error(
+              'Hay varios equipos con ese nombre en la división. No se guardó nada. ' +
+              'Revisa Administración → Equipos para evitar modificar el equipo equivocado.'
+            )
+          }
+
+          const equipoConNombreOriginal = coincidenciasOriginales[0] || null
+          const equipoConNombreNuevo = coincidenciasNuevas[0] || null
+
+          if (equipoConNombreOriginal && equipoConNombreNuevo &&
+              equipoConNombreOriginal.id !== equipoConNombreNuevo.id) {
+            throw new Error(
+              'El nombre nuevo ya pertenece a otro equipo de esta división. ' +
+              'No se guardó nada para evitar confundir dos equipos diferentes.'
+            )
+          }
+
+          let equipo = equipoConNombreOriginal || equipoConNombreNuevo
+
+          if (equipo) {
+            const { data: inscripciones, error: errorInscripcion } = await supabase
+              .from('inscripciones_equipo')
+              .select('equipo_id')
+              .eq('equipo_id', equipo.id)
+              .eq('division_id', solicitud.division_id)
+              .limit(1)
+
+            if (errorInscripcion) {
+              throw new Error('No se pudo comprobar la inscripción oficial: ' + errorInscripcion.message)
+            }
+
+            if (!inscripciones?.length) {
+              // No asumir que es el mismo equipo si no está inscrito.
+              equipo = null
+            }
+          }
+
+          if (equipo && equipoConNombreOriginal) {
+            // Caso habitual: el nombre de la solicitud aún coincide con el
+            // equipo oficial. Actualizamos ambos sin cambiar su ID.
+            if (!window.confirm(
+              `¿Actualizar la solicitud y el equipo oficial "${equipo.nombre}"?\n\n` +
+              'Se conservarán los jugadores, partidos, resultados y estadísticas.'
+            )) return
+
+            equipoOriginal = equipo
+            nombreEquipoTrasActualizacion = cambioNombre ? cambios.nombre_equipo : equipo.nombre
+
+            const { data: equipoGuardado, error: errorEquipo } = await supabase
+              .from('equipos')
+              .update({
+                ...(cambioNombre ? { nombre: cambios.nombre_equipo } : {}),
+                ...(cambioTelefono ? { telefono: cambios.telefono } : {})
+              })
+              .eq('id', equipo.id)
+              .eq('division_id', solicitud.division_id)
+              .eq('nombre', equipo.nombre)
+              .select('id')
+
+            if (errorEquipo || !equipoGuardado?.length) {
+              throw new Error(
+                'No se pudo actualizar el equipo oficial: ' +
+                (errorEquipo?.message || 'el registro cambió. Actualiza la lista.')
+              )
+            }
+
+            equipoActualizado = true
+          } else if (equipo && equipoConNombreNuevo) {
+            // Caso LA VALLARTA FC: el equipo ya se renombró en Equipos.
+            // Actualizar la solicitud sin intentar renombrar otra vez el equipo.
+            if (!window.confirm(
+              `El equipo oficial ya aparece como "${equipo.nombre}" en esta división.\n\n` +
+              '¿Actualizar la solicitud para que coincida con ese nombre?' +
+              (cambioTelefono ? '\nTambién se actualizará el teléfono del equipo oficial.' : '')
+            )) return
+
+            solicitudReconciliada = true
+
+            if (cambioTelefono) {
+              equipoOriginal = equipo
+              nombreEquipoTrasActualizacion = equipo.nombre
+
+              const { data: equipoGuardado, error: errorEquipo } = await supabase
+                .from('equipos')
+                .update({ telefono: cambios.telefono })
+                .eq('id', equipo.id)
+                .eq('division_id', solicitud.division_id)
+                .eq('nombre', equipo.nombre)
+                .select('id')
+
+              if (errorEquipo || !equipoGuardado?.length) {
+                throw new Error(
+                  'No se pudo actualizar el teléfono del equipo oficial: ' +
+                  (errorEquipo?.message || 'el registro cambió. Actualiza la lista.')
+                )
+              }
+
+              equipoActualizado = true
+            }
+          } else {
+            // No hay coincidencia segura. Permitir corregir el expediente
+            // sin tocar equipos oficiales, y dejarlo claro al administrador.
+            if (!window.confirm(
+              'No se pudo identificar un equipo oficial único con el nombre anterior ni con el nuevo.\n\n' +
+              '¿Guardar SOLAMENTE la corrección de esta solicitud?\n\n' +
+              'Ningún equipo oficial, partido o estadística será modificado.'
+            )) return
+          }
         }
-
-        const equipo = coincidencias[0]
-
-        if (cambioNombre && (equiposDivision || []).some(
-          otro => otro.id !== equipo.id &&
-            nombreEnMayusculas(otro.nombre) === cambios.nombre_equipo
-        )) {
-          throw new Error(
-            'Ya existe otro equipo con ese nombre en la misma división. No se guardó nada.'
-          )
-        }
-
-        const { data: inscripciones, error: errorInscripcion } = await supabase
-          .from('inscripciones_equipo')
-          .select('equipo_id')
-          .eq('equipo_id', equipo.id)
-          .eq('division_id', solicitud.division_id)
-          .limit(1)
-
-        if (errorInscripcion || !inscripciones?.length) {
-          throw new Error(
-            'No se pudo comprobar la inscripción del equipo oficial. No se guardó nada. Revisa Administración → Equipos.'
-          )
-        }
-
-        if (!window.confirm(
-          `Esta solicitud ya está aprobada. ¿Actualizar también el nombre/teléfono del equipo oficial "${equipo.nombre}"?\n\nLos partidos, goles y estadísticas conservarán el mismo equipo.`
-        )) return
-
-        equipoOriginal = equipo
-
-        const { data: equipoGuardado, error: errorEquipo } = await supabase
-          .from('equipos')
-          .update({
-            ...(cambioNombre ? { nombre: cambios.nombre_equipo } : {}),
-            ...(cambioTelefono ? { telefono: cambios.telefono } : {})
-          })
-          .eq('id', equipo.id)
-          .eq('division_id', solicitud.division_id)
-          .eq('nombre', equipo.nombre)
-          .select('id')
-
-        if (errorEquipo || !equipoGuardado?.length) {
-          throw new Error(
-            'No se pudo actualizar el equipo oficial: ' +
-            (errorEquipo?.message || 'el registro cambió. Actualiza la lista.')
-          )
-        }
-
-        equipoActualizado = true
       }
 
       const { data: solicitudGuardada, error: errorSolicitud } = await supabase
@@ -286,7 +348,7 @@ export default function AdminInscripciones() {
               ...(cambioTelefono ? { telefono: equipoOriginal.telefono } : {})
             })
             .eq('id', equipoOriginal.id)
-            .eq('nombre', cambioNombre ? cambios.nombre_equipo : equipoOriginal.nombre)
+            .eq('nombre', nombreEquipoTrasActualizacion)
             .select('id')
 
           if (errorRestaurar || !restaurado?.length) {
@@ -303,9 +365,12 @@ export default function AdminInscripciones() {
       setEditandoId(null)
       setNombreEditado(false)
       setMensaje(
-        equipoActualizado
-          ? 'Solicitud y equipo oficial actualizados correctamente.'
-          : 'Solicitud actualizada correctamente.'
+        solicitudReconciliada
+          ? 'Solicitud sincronizada con el nombre que ya aparece en Equipos.' +
+            (equipoActualizado ? ' También se actualizó el teléfono oficial.' : '')
+          : equipoActualizado
+            ? 'Solicitud y equipo oficial actualizados correctamente.'
+            : 'Solicitud actualizada correctamente. No se modificó ningún equipo oficial.'
       )
       await refrescarDespuesDeCambio()
     } catch (error) {
@@ -658,10 +723,10 @@ export default function AdminInscripciones() {
 
                       {s.estado === 'aprobada' && (
                         <p style={{ fontSize: 13, color: '#555' }}>
-                          Si cambias el nombre o teléfono de un equipo aprobado,
-                          verificaremos el equipo oficial antes de actualizarlo.
-                          Si no podemos identificarlo con seguridad, no se guardará
-                          el cambio y podrás revisarlo en Administración → Equipos.
+                          Si el equipo ya fue renombrado en Administración → Equipos,
+                          podrás actualizar esta solicitud para que coincidan.
+                          Si no encontramos un equipo oficial único, podrás guardar
+                          solo la solicitud, con confirmación y sin alterar equipos.
                         </p>
                       )}
 
