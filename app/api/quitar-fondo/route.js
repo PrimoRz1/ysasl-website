@@ -30,15 +30,12 @@ function errorJson(mensaje, estado) {
   })
 }
 
-// PILOTO: solo la ficha #28 de Primitivo Recendez en LA VALLARTA FC (#19).
-// La autorización se comprueba en Supabase usando el token del usuario.
-// No basta con enviar el nombre, el correo o el ID desde el navegador.
-// Para abrir el servicio a toda la liga, restaurar la API general después
-// de completar y revisar la prueba. Nunca quitar esta protección antes.
-const FICHA_PILOTO = 28
-const EQUIPO_PILOTO = 19
-
-async function comprobarAccesoPiloto(request) {
+// AUTORIZACIÓN GENERAL: solo jugadores con solicitud aprobada,
+// ficha ACTIVA y vinculada al equipo correspondiente, que también debe
+// estar activo. Se valida con el token real en Supabase; nunca se confía
+// en IDs o nombres enviados desde el navegador.
+// La RPC de Supabase aplica por separado los cupos y la temporada activa.
+async function comprobarAccesoJugador(request) {
   const cabecera = request.headers.get('authorization') || ''
   const coincidencia = /^Bearer\s+(\S+)$/i.exec(cabecera)
   if (!coincidencia) return { autenticado: false, autorizado: false }
@@ -59,37 +56,75 @@ async function comprobarAccesoPiloto(request) {
     const usuario = await respuestaAuth.json()
     if (!usuario?.id) return { autenticado: false, autorizado: false }
 
-    // Solo la solicitud aprobada que está vinculada a la ficha real #28.
-    const url = new URL(`${base}/rest/v1/solicitudes_jugadores`)
-    url.searchParams.set('select', 'id')
-    url.searchParams.set('usuario_id', `eq.${usuario.id}`)
-    url.searchParams.set('jugador_id', `eq.${FICHA_PILOTO}`)
-    url.searchParams.set('equipo_id', `eq.${EQUIPO_PILOTO}`)
-    url.searchParams.set('estado', 'eq.aprobada')
-    url.searchParams.set('limit', '1')
+    const urlSolicitudes = new URL(`${base}/rest/v1/solicitudes_jugadores`)
+    urlSolicitudes.searchParams.set('select', 'jugador_id,equipo_id')
+    urlSolicitudes.searchParams.set('usuario_id', `eq.${usuario.id}`)
+    urlSolicitudes.searchParams.set('estado', 'eq.aprobada')
+    urlSolicitudes.searchParams.set('jugador_id', 'not.is.null')
+    urlSolicitudes.searchParams.set('limit', '100')
 
-    const respuestaSolicitud = await fetch(url.toString(), {
+    const respuestaSolicitudes = await fetch(urlSolicitudes.toString(), {
       headers,
       cache: 'no-store',
       signal: AbortSignal.timeout(10000)
     })
-    if (!respuestaSolicitud.ok) {
+    if (!respuestaSolicitudes.ok) {
       return { autenticado: true, autorizado: false, token }
     }
-    const solicitudes = await respuestaSolicitud.json()
-    return {
-      autenticado: true,
-      autorizado: Array.isArray(solicitudes) && solicitudes.length > 0,
-      token
+    const solicitudes = await respuestaSolicitudes.json()
+    if (!Array.isArray(solicitudes) || solicitudes.length === 0) {
+      return { autenticado: true, autorizado: false, token }
     }
+
+    // Evitar que una solicitud histórica de un jugador dado de baja
+    // permita procesar fotografías. La ficha y el equipo deben seguir activos.
+    for (const solicitud of solicitudes) {
+      const jugadorId = Number(solicitud.jugador_id)
+      const equipoId = Number(solicitud.equipo_id)
+      if (!Number.isSafeInteger(jugadorId) || jugadorId < 1 ||
+          !Number.isSafeInteger(equipoId) || equipoId < 1) continue
+
+      const urlJugador = new URL(`${base}/rest/v1/jugadores`)
+      urlJugador.searchParams.set('select', 'id')
+      urlJugador.searchParams.set('id', `eq.${jugadorId}`)
+      urlJugador.searchParams.set('equipo_id', `eq.${equipoId}`)
+      urlJugador.searchParams.set('activo', 'is.true')
+      urlJugador.searchParams.set('limit', '1')
+
+      const urlEquipo = new URL(`${base}/rest/v1/equipos`)
+      urlEquipo.searchParams.set('select', 'id')
+      urlEquipo.searchParams.set('id', `eq.${equipoId}`)
+      urlEquipo.searchParams.set('activo', 'is.true')
+      urlEquipo.searchParams.set('limit', '1')
+
+      const [respuestaJugador, respuestaEquipo] = await Promise.all([
+        fetch(urlJugador.toString(), {
+          headers, cache: 'no-store', signal: AbortSignal.timeout(10000)
+        }),
+        fetch(urlEquipo.toString(), {
+          headers, cache: 'no-store', signal: AbortSignal.timeout(10000)
+        })
+      ])
+      if (!respuestaJugador.ok || !respuestaEquipo.ok) continue
+
+      const [jugadores, equipos] = await Promise.all([
+        respuestaJugador.json(), respuestaEquipo.json()
+      ])
+      if (Array.isArray(jugadores) && jugadores.length === 1 &&
+          Array.isArray(equipos) && equipos.length === 1) {
+        return { autenticado: true, autorizado: true, token }
+      }
+    }
+
+    return { autenticado: true, autorizado: false, token }
   } catch {
-    // Si falla cualquier verificación, no se cobra ni se procesa nada.
+    // Si falla cualquier comprobación, no se procesa ni se cobra nada.
     return { autenticado: false, autorizado: false }
   }
 }
 
 export async function GET(request) {
-  const acceso = configurado() ? await comprobarAccesoPiloto(request) : null
+  const acceso = configurado() ? await comprobarAccesoJugador(request) : null
   return Response.json({ disponible: Boolean(acceso?.autorizado) }, {
     headers: { 'Cache-Control': 'no-store' }
   })
@@ -101,11 +136,11 @@ export async function POST(request) {
     return errorJson('El quitafondos aún no está habilitado.', 503)
   }
 
-  // Restricción obligatoria ANTES de reservar cupo o llamar a Leonardo.
-  const acceso = await comprobarAccesoPiloto(request)
+  // Verificación obligatoria ANTES de reservar cupo o llamar a Leonardo.
+  const acceso = await comprobarAccesoJugador(request)
   if (!acceso.autenticado) return errorJson('Debes iniciar sesión.', 401)
   if (!acceso.autorizado) {
-    return errorJson('Esta prueba está reservada a Primitivo Recendez.', 403)
+    return errorJson('Solo jugadores aprobados y activos pueden utilizar el quitafondos.', 403)
   }
 
   const base = process.env.NEXT_PUBLIC_SUPABASE_URL.replace(/\/$/, '')
@@ -131,9 +166,9 @@ export async function POST(request) {
     return errorJson('Selecciona una imagen JPG, PNG o WebP de máximo 2 MB.', 400)
   }
 
-  // Reserva atómica: valida jugador aprobado y temporada activa, máximo
-  // dos procesamientos por jugador/temporada y 620 reservas globales.
-  // SIN límite diario. Si falta la RPC, no se realiza ninguna llamada pagada.
+  // Reserva atómica en Supabase: valida temporada activa y aplica los cupos
+  // configurados en la RPC. Si falta la RPC, no hay llamada pagada.
+  // Revisa que la versión SQL instalada sea la vigente (sin límite diario).
   let permitido = false
   try {
     const cuota = await fetch(`${base}/rest/v1/rpc/reservar_quitafondo_leonardo`, {
