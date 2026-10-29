@@ -14,6 +14,11 @@ const MAX_ORIGINAL = 2 * 1024 * 1024
 const MAX_PNG = 5 * 1024 * 1024
 const MIME_PERMITIDOS = new Set(['image/jpeg', 'image/png', 'image/webp'])
 
+// PILOTO TEMPORAL: solo el jugador real #28 de LA VALLARTA FC (#19).
+// Quitar esta restricción únicamente después de terminar la prueba.
+const PILOTO_JUGADOR_ID = 28
+const PILOTO_EQUIPO_ID = 19
+
 function configurado() {
   return Boolean(
     process.env.YSASL_QUITAFONDO_HABILITADO === 'true' &&
@@ -83,6 +88,9 @@ async function comprobarAccesoJugador(request) {
       const equipoId = Number(solicitud.equipo_id)
       if (!Number.isSafeInteger(jugadorId) || jugadorId < 1 ||
           !Number.isSafeInteger(equipoId) || equipoId < 1) continue
+
+      // Evitar que otros jugadores puedan consumir créditos durante el piloto.
+      if (jugadorId !== PILOTO_JUGADOR_ID || equipoId !== PILOTO_EQUIPO_ID) continue
 
       const urlJugador = new URL(`${base}/rest/v1/jugadores`)
       urlJugador.searchParams.set('select', 'id')
