@@ -4,6 +4,13 @@
 import { useEffect, useState } from 'react'
 import { supabase } from '../../../lib/supabase'
 
+function nombreEnMayusculas(valor) {
+  return String(valor || '')
+    .trim()
+    .replace(/\s+/g, ' ')
+    .toLocaleUpperCase('es')
+}
+
 export default function AdminEquiposPage() {
   const [equipos, setEquipos] = useState([])
   const [divisiones, setDivisiones] = useState([])
@@ -64,7 +71,7 @@ export default function AdminEquiposPage() {
 
   async function crearEquipo() {
     if (ocupado) return
-    if (!nombre.trim() || !divisionId) {
+    if (!nombreEnMayusculas(nombre) || !divisionId) {
       setMensaje('Escribe el nombre y selecciona una división.')
       return
     }
@@ -74,7 +81,7 @@ export default function AdminEquiposPage() {
     try {
       const { data: equipo, error } = await supabase
         .from('equipos')
-        .insert({ nombre: nombre.trim(), activo: true })
+        .insert({ nombre: nombreEnMayusculas(nombre), activo: true })
         .select('id')
         .single()
 
@@ -113,31 +120,241 @@ export default function AdminEquiposPage() {
 
   async function guardarNombre(equipo) {
     if (ocupado) return
-    const nuevoNombre = nombreEditado.trim()
+
+    const nombreAnterior = equipo.nombre
+    const nuevoNombre = nombreEnMayusculas(nombreEditado)
     if (!nuevoNombre) {
       setMensaje('El nombre no puede estar vacío.')
       return
     }
-    if (nuevoNombre === equipo.nombre) {
+    if (nuevoNombre === nombreAnterior) {
       setMensaje('El nombre no cambió.')
       return
     }
 
     setOcupado(true)
+    setMensaje('')
+
+    // Guardamos los registros modificados para intentar revertir los cambios
+    // si falla una actualización posterior. Esto NO reemplaza una transacción SQL.
+    let equipoRenombrado = false
+    const solicitudesRenombradas = []
+
     try {
-      const { data, error } = await supabase
+      // 1. Comprobar que el nombre oficial no cambió desde que abrimos la página.
+      const { data: equipoActual, error: errorActual } = await supabase
+        .from('equipos')
+        .select('id, nombre')
+        .eq('id', equipo.id)
+        .single()
+
+      if (errorActual || !equipoActual) {
+        throw new Error('No se pudo verificar el equipo: ' + (errorActual?.message || 'no encontrado.'))
+      }
+      if (equipoActual.nombre !== nombreAnterior) {
+        throw new Error('El equipo ya fue modificado desde otra pantalla. Actualiza la página antes de continuar.')
+      }
+
+      // 2. Buscar únicamente las divisiones en las que ESTE equipo está inscrito.
+      const { data: altas, error: errorAltas } = await supabase
+        .from('inscripciones_equipo')
+        .select('division_id')
+        .eq('equipo_id', equipo.id)
+        .eq('activo', true)
+
+      if (errorAltas) {
+        throw new Error('No se pudieron verificar las divisiones del equipo: ' + errorAltas.message)
+      }
+
+      const idsDivision = [...new Set((altas || []).map(a => Number(a.division_id)).filter(Number.isFinite))]
+      let solicitudesParaActualizar = []
+      let solicitudesYaCoinciden = 0
+
+      if (idsDivision.length > 0) {
+        // 3. Validar que no exista otro equipo con el nombre nuevo en la misma división.
+        // También comprobamos que el nombre anterior identifique a un único equipo.
+        const { data: altasDivision, error: errorAltasDivision } = await supabase
+          .from('inscripciones_equipo')
+          .select('equipo_id, division_id')
+          .in('division_id', idsDivision)
+          .eq('activo', true)
+          .limit(1000)
+
+        if (errorAltasDivision) throw new Error('No se pudieron verificar las inscripciones: ' + errorAltasDivision.message)
+        if ((altasDivision || []).length >= 1000) {
+          throw new Error('Hay demasiadas inscripciones para comprobar de forma segura. No se guardó nada.')
+        }
+
+        const idsEquipos = [...new Set((altasDivision || []).map(a => a.equipo_id))]
+        const { data: nombresDivision, error: errorNombres } = idsEquipos.length
+          ? await supabase.from('equipos').select('id, nombre').in('id', idsEquipos)
+          : { data: [], error: null }
+
+        if (errorNombres) throw new Error('No se pudieron comparar los nombres oficiales: ' + errorNombres.message)
+        const nombresPorId = new Map((nombresDivision || []).map(e => [String(e.id), nombreEnMayusculas(e.nombre)]))
+        const anteriorNormalizado = nombreEnMayusculas(nombreAnterior)
+
+        for (const idDivision of idsDivision) {
+          const equiposDeEstaDivision = (altasDivision || [])
+            .filter(a => Number(a.division_id) === idDivision)
+
+          const mismoNombreAnterior = equiposDeEstaDivision.filter(
+            a => nombresPorId.get(String(a.equipo_id)) === anteriorNormalizado
+          )
+          if (mismoNombreAnterior.length !== 1 || String(mismoNombreAnterior[0].equipo_id) !== String(equipo.id)) {
+            throw new Error('El nombre anterior no identifica un equipo único en una de sus divisiones. No se guardó nada.')
+          }
+
+          const otroConNombreNuevo = equiposDeEstaDivision.some(
+            a => String(a.equipo_id) !== String(equipo.id) &&
+              nombresPorId.get(String(a.equipo_id)) === nuevoNombre
+          )
+          if (otroConNombreNuevo) {
+            throw new Error('Ya existe otro equipo con el nombre nuevo en una de sus divisiones. No se guardó nada.')
+          }
+        }
+
+        // 4. Encontrar solicitudes APROBADAS que todavía tienen el nombre anterior.
+        // La combinación de división, torneo y nombre debe ser inequívoca.
+        const { data: solicitudes, error: errorSolicitudes } = await supabase
+          .from('solicitudes_inscripcion')
+          .select('id, nombre_equipo, division_id, temporada_id')
+          .eq('estado', 'aprobada')
+          .in('division_id', idsDivision)
+          .limit(1000)
+
+        if (errorSolicitudes) {
+          throw new Error('No se pudieron verificar las solicitudes aprobadas: ' + errorSolicitudes.message)
+        }
+        if ((solicitudes || []).length >= 1000) {
+          throw new Error('Hay demasiadas solicitudes para sincronizar con seguridad. No se guardó nada.')
+        }
+
+        for (const idDivision of idsDivision) {
+          const division = divisiones.find(d => Number(d.id) === idDivision)
+          if (!division) {
+            throw new Error('No se encontró una división del equipo. Actualiza la página antes de continuar.')
+          }
+
+          const coincidencias = (solicitudes || []).filter(s =>
+            Number(s.division_id) === idDivision &&
+            Number(s.temporada_id) === Number(division.temporada_id) &&
+            nombreEnMayusculas(s.nombre_equipo) === anteriorNormalizado
+          )
+
+          const yaConNombreNuevo = (solicitudes || []).filter(s =>
+            Number(s.division_id) === idDivision &&
+            Number(s.temporada_id) === Number(division.temporada_id) &&
+            nombreEnMayusculas(s.nombre_equipo) === nuevoNombre
+          )
+
+          if (coincidencias.length > 1 || yaConNombreNuevo.length > 1) {
+            throw new Error(
+              'Hay varias solicitudes aprobadas con nombres coincidentes en ' +
+              etiquetaDivision(idDivision) + '. Revísalas antes de cambiar el equipo.'
+            )
+          }
+          if (coincidencias.length === 1 && yaConNombreNuevo.length === 1 &&
+              coincidencias[0].id !== yaConNombreNuevo[0].id) {
+            throw new Error(
+              'El nombre nuevo ya pertenece a otra solicitud aprobada de ' +
+              etiquetaDivision(idDivision) + '. No se guardó nada.'
+            )
+          }
+          if (coincidencias.length === 1) {
+            solicitudesParaActualizar.push(coincidencias[0])
+          } else if (yaConNombreNuevo.length === 1) {
+            // La solicitud se había corregido antes que el equipo oficial.
+            solicitudesYaCoinciden++
+          }
+        }
+      }
+
+      const aviso = solicitudesParaActualizar.length
+        ? `¿Cambiar el nombre de "${nombreAnterior}" a "${nuevoNombre}" y actualizar ` +
+          `${solicitudesParaActualizar.length} solicitud(es) aprobada(s) correspondiente(s)?`
+        : solicitudesYaCoinciden
+          ? `La solicitud aprobada ya tiene el nombre "${nuevoNombre}".\n\n` +
+            '¿Actualizar solamente el equipo oficial para que coincidan?'
+          : `No encontramos una solicitud aprobada con el nombre anterior para sincronizar.\n\n` +
+            `¿Cambiar SOLO el nombre del equipo oficial a "${nuevoNombre}"?`
+
+      if (!window.confirm(aviso + '\n\nSe conservarán los jugadores, partidos y resultados.')) return
+
+      // 5. Cambiar el equipo sin modificar su ID ni ninguna relación existente.
+      const { data: equipoGuardado, error: errorGuardarEquipo } = await supabase
         .from('equipos')
         .update({ nombre: nuevoNombre })
         .eq('id', equipo.id)
+        .eq('nombre', nombreAnterior)
         .select('id')
 
-      if (error) throw error
-      if (!data?.length) throw new Error('No se actualizó el registro. Revisa los permisos de Supabase.')
+      if (errorGuardarEquipo || !equipoGuardado?.length) {
+        throw new Error('No se pudo guardar el nombre del equipo: ' +
+          (errorGuardarEquipo?.message || 'el registro cambió o faltan permisos.'))
+      }
+      equipoRenombrado = true
+
+      // 6. Sincronizar cada solicitud sin cambiar su estado ni crear equipos.
+      for (const solicitud of solicitudesParaActualizar) {
+        const { data: guardadas, error: errorGuardarSolicitud } = await supabase
+          .from('solicitudes_inscripcion')
+          .update({ nombre_equipo: nuevoNombre })
+          .eq('id', solicitud.id)
+          .eq('estado', 'aprobada')
+          .eq('division_id', solicitud.division_id)
+          .eq('nombre_equipo', solicitud.nombre_equipo)
+          .select('id')
+
+        if (errorGuardarSolicitud || !guardadas?.length) {
+          throw new Error('No se pudo sincronizar una solicitud aprobada: ' +
+            (errorGuardarSolicitud?.message || 'el registro cambió o faltan permisos.'))
+        }
+        solicitudesRenombradas.push(solicitud)
+      }
+
       await cargarDatos()
       setEditandoId(null)
-      setMensaje('Nombre actualizado correctamente. El nombre nuevo se verá también en los partidos anteriores de este equipo.')
+      setNombreEditado('')
+      setMensaje(
+        solicitudesParaActualizar.length
+          ? `Nombre actualizado en Equipos y en ${solicitudesParaActualizar.length} solicitud(es) aprobada(s).` +
+            (solicitudesYaCoinciden ? ` Otras ${solicitudesYaCoinciden} ya tenían ese nombre.` : '')
+          : solicitudesYaCoinciden
+            ? 'Nombre actualizado en Equipos. La solicitud aprobada ya tenía el nombre correcto.'
+            : 'Nombre actualizado en Equipos. No se encontró una solicitud aprobada con el nombre anterior; revisa Solicitudes de inscripción si es necesario.'
+      )
     } catch (error) {
-      setMensaje(`No se pudo cambiar el nombre: ${error.message}`)
+      // Si una actualización posterior falla, intentar dejar ambos registros
+      // como estaban. Si la reversión falla, advertirlo expresamente.
+      const erroresReversion = []
+      for (const solicitud of [...solicitudesRenombradas].reverse()) {
+        const { data, error: errorRevertir } = await supabase
+          .from('solicitudes_inscripcion')
+          .update({ nombre_equipo: solicitud.nombre_equipo })
+          .eq('id', solicitud.id)
+          .eq('nombre_equipo', nuevoNombre)
+          .select('id')
+
+        if (errorRevertir || !data?.length) erroresReversion.push('solicitud ' + solicitud.id)
+      }
+
+      if (equipoRenombrado) {
+        const { data, error: errorRevertir } = await supabase
+          .from('equipos')
+          .update({ nombre: nombreAnterior })
+          .eq('id', equipo.id)
+          .eq('nombre', nuevoNombre)
+          .select('id')
+
+        if (errorRevertir || !data?.length) erroresReversion.push('equipo ' + equipo.id)
+      }
+
+      await cargarDatos()
+      setMensaje(erroresReversion.length
+        ? `ATENCIÓN: ${error.message} No se pudo restaurar: ${erroresReversion.join(', ')}. Revisa Equipos y Solicitudes de inscripción antes de continuar.`
+        : `No se completó el cambio: ${error.message} No se dejaron cambios parciales conocidos.`
+      )
     } finally {
       setOcupado(false)
     }
@@ -360,7 +577,7 @@ export default function AdminEquiposPage() {
           type="text"
           placeholder="Nombre del equipo"
           value={nombre}
-          onChange={(e) => setNombre(e.target.value)}
+          onChange={(e) => setNombre(e.target.value.toLocaleUpperCase('es'))}
           style={estiloInput}
         />
         <select value={divisionId} onChange={(e) => setDivisionId(e.target.value)} style={estiloInput}>
@@ -424,7 +641,7 @@ export default function AdminEquiposPage() {
                   )}
                 </div>
                 <p><strong>Nombre del equipo</strong></p>
-                <input type="text" value={nombreEditado} onChange={(e) => setNombreEditado(e.target.value)} style={estiloInput} />
+                <input type="text" value={nombreEditado} onChange={(e) => setNombreEditado(e.target.value.toLocaleUpperCase('es'))} style={estiloInput} />
                 <button type="button" disabled={ocupado} onClick={() => guardarNombre(equipo)} style={estiloBoton}>
                   Guardar nombre
                 </button>
