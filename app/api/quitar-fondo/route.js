@@ -1,6 +1,7 @@
 // YSASL — app/api/quitar-fondo/route.js
 // API privada: Leonardo.Ai para fotos de jugadores (sin fondo).
-// IMPORTANTE: se mantiene APAGADA hasta habilitarla expresamente en Vercel.
+// IMPORTANTE: dejar APAGADA en Vercel mientras se verifica la respuesta de Leonardo.
+// Esta revisión NO activa el servicio ni realiza llamadas a Leonardo.
 // Requiere la RPC de Supabase para presupuesto y cupos por temporada.
 // Compatible con NEXT_PUBLIC_SUPABASE_PUBLISHABLE_KEY (Supabase actual)
 // y NEXT_PUBLIC_SUPABASE_ANON_KEY (proyectos anteriores).
@@ -13,11 +14,6 @@ export const maxDuration = 60
 const MAX_ORIGINAL = 2 * 1024 * 1024
 const MAX_PNG = 5 * 1024 * 1024
 const MIME_PERMITIDOS = new Set(['image/jpeg', 'image/png', 'image/webp'])
-
-// PILOTO TEMPORAL: solo el jugador real #28 de LA VALLARTA FC (#19).
-// Quitar esta restricción únicamente después de terminar la prueba.
-const PILOTO_JUGADOR_ID = 28
-const PILOTO_EQUIPO_ID = 19
 
 function configurado() {
   return Boolean(
@@ -88,9 +84,6 @@ async function comprobarAccesoJugador(request) {
       const equipoId = Number(solicitud.equipo_id)
       if (!Number.isSafeInteger(jugadorId) || jugadorId < 1 ||
           !Number.isSafeInteger(equipoId) || equipoId < 1) continue
-
-      // Evitar que otros jugadores puedan consumir créditos durante el piloto.
-      if (jugadorId !== PILOTO_JUGADOR_ID || equipoId !== PILOTO_EQUIPO_ID) continue
 
       const urlJugador = new URL(`${base}/rest/v1/jugadores`)
       urlJugador.searchParams.set('select', 'id')
@@ -260,18 +253,46 @@ export async function POST(request) {
       return errorJson('Leonardo respondió con un formato inesperado.', 502)
     }
 
-    const resultados = Array.isArray(datos?.results) ? datos.results : []
-    const errores = Array.isArray(datos?.errors) ? datos.errors : []
-    const bloqueadas = Number.isInteger(datos?.blockedCount) ? datos.blockedCount : 0
+    // Según la documentación de Leonardo, la respuesta Sync normalmente
+    // tiene results en la raíz. Algunas respuestas pueden venir envueltas
+    // en data/result/response. No asumir que HTTP 200 implica imagen.
+    const opciones = [
+      ['raiz', datos],
+      ['data', datos?.data],
+      ['result', datos?.result],
+      ['response', datos?.response],
+      ['data.data', datos?.data?.data],
+      ['data.result', datos?.data?.result],
+      ['data.response', datos?.data?.response]
+    ]
+    const encontrado = opciones.find(([, valor]) => Array.isArray(valor?.results))
+    const ubicacion = encontrado?.[0] || 'no_identificada'
+    const generacion = encontrado?.[1] || datos
+    const resultados = Array.isArray(generacion?.results) ? generacion.results : []
+    const errores = Array.isArray(generacion?.errors) ? generacion.errors :
+      (Array.isArray(datos?.errors) ? datos.errors : [])
+    const bloqueadas = Number.isInteger(generacion?.blockedCount) ? generacion.blockedCount : 0
+
+    // SOLO nombres de propiedades, nunca valores. Útil si Leonardo cambia
+    // el formato otra vez, sin registrar datos personales ni enlaces.
+    const clavesSeguras = (valor) =>
+      valor && typeof valor === 'object' && !Array.isArray(valor)
+        ? Object.keys(valor).filter(k => /^[A-Za-z][A-Za-z0-9_]{0,39}$/.test(k)).slice(0, 16)
+        : []
+
     const diagnostico = {
       httpStatus: respuesta.status,
-      generationId: typeof datos?.id === 'string' ? datos.id : null,
-      resultsArray: Array.isArray(datos?.results),
+      contentType: respuesta.headers.get('content-type') || 'no indicado',
+      ubicacion,
+      rootKeys: clavesSeguras(datos),
+      dataKeys: clavesSeguras(datos?.data),
+      resultKeys: clavesSeguras(datos?.result),
+      generationIdPresent: typeof generacion?.id === 'string',
+      resultsArray: Array.isArray(generacion?.results),
       resultsCount: resultados.length,
       blockedCount: bloqueadas,
       errorsCount: errores.length,
-      costAmount: typeof datos?.cost?.amount === 'string' ? datos.cost.amount : null,
-      costUnit: typeof datos?.cost?.unit === 'string' ? datos.cost.unit : null
+      costPresent: generacion?.cost != null
     }
 
     // Un HTTP 200 no garantiza que Leonardo haya entregado una imagen.
