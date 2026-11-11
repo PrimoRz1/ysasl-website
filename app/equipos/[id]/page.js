@@ -95,7 +95,7 @@ export default async function EquipoPage({ params }) {
                   {jugador.foto_url ? (
                     <img src={jugador.foto_url} alt={`Fotografía de ${jugador.nombre}`}
                       loading="lazy" style={{ position: 'relative', width: '100%', height: '100%',
-                        objectFit: 'contain', objectPosition: 'center bottom' }} />
+                        objectFit: 'cover', objectPosition: '55% 22%' }} />
                   ) : (
                     <div style={{ position: 'relative', height: '100%', display: 'flex',
                       flexDirection: 'column', alignItems: 'center', justifyContent: 'center',
