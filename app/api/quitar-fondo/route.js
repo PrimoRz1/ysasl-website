@@ -261,10 +261,12 @@ export async function POST(request) {
       return errorJson('Leonardo respondió con un formato inesperado.', 502)
     }
 
-    // Según la documentación de Leonardo, la respuesta Sync normalmente
-    // tiene results en la raíz. Algunas respuestas pueden venir envueltas
-    // en data/result/response. No asumir que HTTP 200 implica imagen.
+    // Confirmado por ingeniería de Leonardo (noviembre 2026): la respuesta
+    // Sync devuelve id, results, cost y blockedCount dentro de generateSync.
+    // Mantener las otras ubicaciones como compatibilidad defensiva.
+    // No asumir que HTTP 200 implica imagen.
     const opciones = [
+      ['generateSync', datos?.generateSync],
       ['raiz', datos],
       ['data', datos?.data],
       ['result', datos?.result],
@@ -293,14 +295,25 @@ export async function POST(request) {
       contentType: respuesta.headers.get('content-type') || 'no indicado',
       ubicacion,
       rootKeys: clavesSeguras(datos),
+      generateSyncKeys: clavesSeguras(datos?.generateSync),
       dataKeys: clavesSeguras(datos?.data),
       resultKeys: clavesSeguras(datos?.result),
       generationIdPresent: typeof generacion?.id === 'string',
+      generationId: typeof generacion?.id === 'string' ? generacion.id : null,
       resultsArray: Array.isArray(generacion?.results),
       resultsCount: resultados.length,
       blockedCount: bloqueadas,
       errorsCount: errores.length,
-      costPresent: generacion?.cost != null
+      costPresent: generacion?.cost != null,
+      costAmount: typeof generacion?.cost?.amount === 'string' ? generacion.cost.amount : null,
+      costUnit: typeof generacion?.cost?.unit === 'string' ? generacion.cost.unit : null,
+      // Metadatos del resultado; NO guardar la URL temporal ni datos de la foto.
+      resultMetadata: resultados.slice(0, 3).map(r => ({
+        contentType: typeof r?.contentType === 'string' ? r.contentType : null,
+        width: Number.isFinite(r?.width) ? r.width : null,
+        height: Number.isFinite(r?.height) ? r.height : null,
+        hasUrl: typeof r?.url === 'string' && r.url.length > 0
+      }))
     }
 
     // Un HTTP 200 no garantiza que Leonardo haya entregado una imagen.
@@ -316,6 +329,8 @@ export async function POST(request) {
       }
       return errorJson('Leonardo respondió sin una imagen procesada. Se conservó la original.', 502)
     }
+    // Registro de metadatos para el piloto controlado; sin URL, Base64 ni foto.
+    console.info('[YSASL Leonardo] Respuesta con imagen disponible', diagnostico)
   } catch {
     return errorJson('El procesamiento tardó demasiado o no respondió.', 502)
   }
