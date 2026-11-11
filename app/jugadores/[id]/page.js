@@ -77,7 +77,11 @@ export default async function FichaJugadorPage({ params }) {
                 objectFit: 'contain', opacity: .12, right: '3%', top: 40 }} />
           )}
           {jugador.foto_url ? (
-            <img src={jugador.foto_url} alt={`Fotografía de ${jugador.nombre}`}
+            src={
+  Number(jugador.id) === 28
+    ? 'https://djtwrknixwhinatcoswf.supabase.co/storage/v1/object/public/fotos-jugadores/uniformes-ysasl/YSASL_Retrato_La_Vallarta_Uniforme_Transparente.png'
+    : jugador.foto_url
+} alt={`Fotografía de ${jugador.nombre}`}
               style={{ position: 'relative', display: 'block', width: '100%',
                 maxWidth: 680, height: 380, objectFit: 'cover',
 objectPosition: 'center bottom',
