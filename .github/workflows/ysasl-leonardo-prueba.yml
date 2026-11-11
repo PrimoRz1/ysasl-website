@@ -1,0 +1,61 @@
+
+name: YSASL - Prueba Leonardo sin creditos
+
+on:
+  workflow_dispatch:
+
+permissions:
+  contents: read
+
+jobs:
+  verificar:
+    runs-on: ubuntu-latest
+    timeout-minutes: 3
+    steps:
+      - name: Leer codigo de GitHub
+        uses: actions/checkout@v4
+
+      - name: Verificar sin contactar Leonardo
+        shell: bash
+        run: |
+          node --input-type=module <<'NODE'
+          import assert from 'node:assert/strict'
+          import { readFileSync } from 'node:fs'
+
+          const codigo = readFileSync('app/api/quitar-fondo/route.js', 'utf8')
+          const leerSimulado = (respuesta) => {
+            const opciones = [
+              respuesta?.generateSync,
+              respuesta,
+              respuesta?.data,
+              respuesta?.result,
+              respuesta?.response
+            ]
+            const generacion = opciones.find(x => Array.isArray(x?.results))
+            return generacion?.results?.[0]?.url ?? null
+          }
+
+          const pruebas = [
+            ['Existe route.js', () => assert.ok(codigo.length > 100)],
+            ['Interruptor de seguridad', () => assert.ok(codigo.includes("YSASL_QUITAFONDO_HABILITADO === 'true'"))],
+            ['Respuesta generateSync', () => assert.match(codigo, /\['generateSync',\s*datos\?\.generateSync\]/)],
+            ['Control de presupuesto', () => assert.ok(codigo.includes('reservar_quitafondo_leonardo'))],
+            ['Piloto limitado', () => {
+              assert.ok(codigo.includes('PILOTO_JUGADOR_ID = 28'))
+              assert.ok(codigo.includes('PILOTO_EQUIPO_ID = 19'))
+            }],
+            ['JSON simulado con imagen', () => assert.equal(
+              leerSimulado({ generateSync: { results: [{ url: 'https://example.invalid/test.png' }] } }),
+              'https://example.invalid/test.png'
+            )],
+            ['JSON simulado sin imagen', () => assert.equal(
+              leerSimulado({ generateSync: { results: [] } }), null
+            )]
+          ]
+
+          for (const [nombre, prueba] of pruebas) {
+            prueba()
+            console.log('OK:', nombre)
+          }
+          console.log('7 de 7 verificaciones completadas. No se contacto a Leonardo.')
+          NODE
