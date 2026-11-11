@@ -142,7 +142,9 @@ export default async function EquipoPage({ params }) {
                           position: 'absolute', inset: 0,
                           width: '100%', height: '100%',
                           objectFit: 'cover', objectPosition: '55% 22%',
-                          transform: 'translateY(-12px) scale(1.05)',
+                          transform: Number(jugador.id) === 28
+  ? 'translateY(16px) scale(1)'
+  : 'translateY(-12px) scale(1.05)',
                           transformOrigin: 'center center',
                         }} />
                     ) : (
