@@ -31,7 +31,7 @@ export default async function EquipoPage({ params }) {
 
   const { data: jugadores, error: errorJugadores } = await supabase
     .from('jugadores')
-    .select('id, nombre, numero, foto_url')
+    .select('id, nombre, numero, foto_url, foto_uniforme_url')
     .eq('equipo_id', id)
     .eq('activo', true)
     .order('numero')
@@ -130,12 +130,8 @@ export default async function EquipoPage({ params }) {
                         }} />
                     )}
 
-                    {jugador.foto_url ? (
-                      <img src={
-  Number(jugador.id) === 28
-    ? 'https://djtwrknixwhinatcoswf.supabase.co/storage/v1/object/public/fotos-jugadores/uniformes-ysasl/YSASL_Retrato_La_Vallarta_Uniforme_Transparente.png'
-    : jugador.foto_url
-}
+                    {(jugador.foto_uniforme_url || jugador.foto_url) ? (
+                      <img src={jugador.foto_uniforme_url || jugador.foto_url}
                         alt={`Fotografía de ${jugador.nombre}`}
                         loading="lazy"
                         style={{
