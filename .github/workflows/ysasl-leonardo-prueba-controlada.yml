@@ -1,0 +1,112 @@
+name: YSASL - Leonardo prueba controlada
+
+on:
+  workflow_dispatch:
+    inputs:
+      modo:
+        description: 'PREPARAR no gasta creditos. AUTORIZO permite una sola llamada pagada.'
+        required: true
+        type: choice
+        default: PREPARAR_SIN_CARGO
+        options:
+          - PREPARAR_SIN_CARGO
+          - AUTORIZO_UN_CARGO
+
+permissions:
+  contents: read
+
+jobs:
+  prueba:
+    runs-on: ubuntu-latest
+    timeout-minutes: 3
+    steps:
+      - name: Leer repositorio
+        uses: actions/checkout@v4
+
+      - name: Preparacion sin costo
+        if: ${{ inputs.modo == 'PREPARAR_SIN_CARGO' }}
+        run: |
+          echo 'Preparacion lista. No se llamo a Leonardo.'
+          echo 'El servicio publico de YSASL sigue independiente.'
+
+      - name: Configurar Node.js
+        if: ${{ inputs.modo == 'AUTORIZO_UN_CARGO' }}
+        uses: actions/setup-node@v4
+        with:
+          node-version: '22'
+
+      - name: Una sola solicitud a Leonardo
+        if: ${{ inputs.modo == 'AUTORIZO_UN_CARGO' }}
+        env:
+          LEONARDO_API_KEY: ${{ secrets.LEONARDO_API_KEY }}
+        shell: bash
+        run: |
+          node --input-type=module <<'NODE'
+          import { readFileSync, writeFileSync, statSync, existsSync } from 'node:fs'
+
+          const ruta = 'pruebas/leonardo/chamarra-barcelona.jpg'
+          if (!process.env.LEONARDO_API_KEY) {
+            throw new Error('Falta configurar el secreto LEONARDO_API_KEY en GitHub.')
+          }
+          if (!existsSync(ruta)) {
+            throw new Error('Falta la imagen de prueba: ' + ruta)
+          }
+          const tamano = statSync(ruta).size
+          if (tamano < 1 || tamano > 2 * 1024 * 1024) {
+            throw new Error('La imagen debe pesar entre 1 byte y 2 MB.')
+          }
+          const base64 = readFileSync(ruta).toString('base64')
+          const cuerpo = {
+            model: 'remove-bg', public: false, ephemeral: true,
+            parameters: {
+              size: 'auto', type: 'person', format: 'png',
+              channels: 'rgba', crop: false,
+              guidances: {
+                image_reference: [{ image: { type: 'BASE64', data: base64 } }]
+              }
+            }
+          }
+          // Exactamente una solicitud POST; no hay reintentos.
+          const respuesta = await fetch('https://cloud.leonardo.ai/api/rest/v2/generationssync', {
+            method: 'POST',
+            headers: {
+              Authorization: `Bearer ${process.env.LEONARDO_API_KEY}`,
+              'Content-Type': 'application/json', Accept: 'application/json'
+            },
+            body: JSON.stringify(cuerpo),
+            signal: AbortSignal.timeout(45000)
+          })
+          console.log('HTTP Leonardo:', respuesta.status)
+          if (!respuesta.ok) throw new Error('Leonardo no devolvio HTTP 2xx.')
+          const datos = await respuesta.json()
+          const generacion = datos?.generateSync
+          console.log('Campos raiz:', Object.keys(datos || {}))
+          console.log('Campos generateSync:', Object.keys(generacion || {}))
+          console.log('ID de generacion:', generacion?.id ?? 'ausente')
+          console.log('Numero de resultados:', Array.isArray(generacion?.results) ? generacion.results.length : 0)
+          console.log('Bloqueados:', generacion?.blockedCount ?? 'no indicado')
+          console.log('Costo informado:', generacion?.cost?.amount ?? 'no indicado')
+          const enlace = generacion?.results?.[0]?.url
+          if (typeof enlace !== 'string' || new URL(enlace).protocol !== 'https:') {
+            throw new Error('No hay URL HTTPS valida en generateSync.results[0].url.')
+          }
+          // La URL es efimera: descargar inmediatamente, sin mostrarla en logs.
+          const imagen = await fetch(enlace, { signal: AbortSignal.timeout(20000) })
+          console.log('HTTP descarga:', imagen.status)
+          if (!imagen.ok) throw new Error('No se pudo descargar la imagen.')
+          const png = Buffer.from(await imagen.arrayBuffer())
+          const firma = Buffer.from([137, 80, 78, 71, 13, 10, 26, 10])
+          if (png.length > 5 * 1024 * 1024 || !png.subarray(0, 8).equals(firma)) {
+            throw new Error('La respuesta no es PNG valido de maximo 5 MB.')
+          }
+          writeFileSync('leonardo-prueba-resultado.png', png)
+          console.log('PNG descargado y verificado:', png.length, 'bytes')
+          NODE
+
+      - name: Guardar resultado de prueba por un dia
+        if: ${{ inputs.modo == 'AUTORIZO_UN_CARGO' && success() }}
+        uses: actions/upload-artifact@v4
+        with:
+          name: resultado-leonardo-prueba
+          path: leonardo-prueba-resultado.png
+          retention-days: 1
