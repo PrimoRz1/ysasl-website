@@ -762,6 +762,24 @@ export default function JugadorPage() {
         background: '#f8fafc'
       }}>
         <h2 style={{ marginTop: 0 }}>📸 Mi fotografía de jugador</h2>
+<div style={{
+  background: '#eef6ff',
+  border: '1px solid #c8def5',
+  borderRadius: 12,
+  padding: '14px 18px',
+  marginBottom: 18,
+  color: '#17365a'
+}}>
+  <strong>📸 ¡Luce los colores de tu equipo!</strong>
+  <p style={{ marginBottom: 0, lineHeight: 1.7 }}>
+    Para que todos los jugadores de YSASL tengan una
+    presentación profesional, toma tu fotografía:
+    <br />⚽ Con la camiseta oficial de tu equipo.
+    <br />📷 De frente, del pecho hacia arriba.
+    <br />☀️ Con buena iluminación y fondo sencillo.
+    <br />🚫 Sin filtros, gorras ni lentes oscuros.
+  </p>
+</div>
         {jugadorVinculado ? (
           <>
             {fotoJugador ? (
