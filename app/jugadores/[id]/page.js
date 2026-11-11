@@ -79,8 +79,8 @@ export default async function FichaJugadorPage({ params }) {
           {jugador.foto_url ? (
             <img src={jugador.foto_url} alt={`Fotografía de ${jugador.nombre}`}
               style={{ position: 'relative', display: 'block', width: '100%',
-                maxWidth: 520, height: 380, objectFit: 'contain',
-                objectPosition: 'center bottom' }} />
+                maxWidth: 680, height: 380, objectFit: 'cover',
+objectPosition: 'center bottom' }} />
           ) : (
             <p style={{ alignSelf: 'center', color: '#ffffffbb' }}>Fotografía pendiente</p>
           )}
