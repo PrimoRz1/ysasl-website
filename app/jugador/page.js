@@ -770,7 +770,13 @@ export default function JugadorPage() {
                 alt="Mi fotografía de jugador"
                 width={140}
                 height={140}
-                style={{ objectFit: 'cover', borderRadius: '50%', display: 'block', marginBottom: '15px' }}
+                style={{
+                  objectFit: 'contain',
+                  objectPosition: 'center center',
+                  borderRadius: '50%',
+                  display: 'block',
+                  margin: '0 auto 15px'
+                }}
               />
             ) : (
               <p>Aún no has agregado una fotografía.</p>
