@@ -786,8 +786,8 @@ export default function JugadorPage() {
               <img
                 src={fotoJugador}
                 alt="Mi fotografía de jugador"
-                width={140}
-                height={140}
+                width={320}
+height={320}
                 style={{
                   objectFit: 'contain',
                   objectPosition: 'center center',
