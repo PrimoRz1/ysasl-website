@@ -173,7 +173,7 @@ export default async function EquipoPage({ params }) {
                       {jugador.numero ?? '—'}
                     </div>
 
-                    {equipo.escudo_url && (
+                    {equipo.escudo_url && Number(jugador.id) !== 28 && (
                       <div style={{
                         position: 'absolute', right: 11, bottom: 11,
                         width: 61, height: 61, background: '#fffffff2',
