@@ -131,7 +131,11 @@ export default async function EquipoPage({ params }) {
                     )}
 
                     {jugador.foto_url ? (
-                      <img src={jugador.foto_url}
+                      <img src={
+  Number(jugador.id) === 28
+    ? 'https://djtwrknixwhinatcoswf.supabase.co/storage/v1/object/public/fotos-jugadores/uniformes-ysasl/YSASL_Retrato_La_Vallarta_Uniforme_Transparente.png'
+    : jugador.foto_url
+}
                         alt={`Fotografía de ${jugador.nombre}`}
                         loading="lazy"
                         style={{
