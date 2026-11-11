@@ -85,7 +85,7 @@ export default async function FichaJugadorPage({ params }) {
               style={{ position: 'relative', display: 'block', width: '100%',
                 maxWidth: 680, height: 380, objectFit: Number(jugador.id) === 28 ? 'contain' : 'cover',
 objectPosition: 'center bottom',
-transform: Number(jugador.id) === 28 ? 'scale(1)' : 'scale(1.4)',
+transform: Number(jugador.id) === 28 ? 'scaleX(0.95)' : 'scale(1.4)',
 transformOrigin: 'center bottom' }} />
           ) : (
             <p style={{ alignSelf: 'center', color: '#ffffffbb' }}>Fotografía pendiente</p>
