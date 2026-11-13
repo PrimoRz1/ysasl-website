@@ -16,6 +16,9 @@ const [temporadaSeleccionada, setTemporadaSeleccionada] = useState(null)
   const [diasJuego, setDiasJuego] = useState([0])
   const [mensaje, setMensaje] = useState('')
   const [guardando, setGuardando] = useState(false)
+  const [divisionEditandoId, setDivisionEditandoId] = useState(null)
+  const [nombreDivisionEditada, setNombreDivisionEditada] = useState('')
+  const [guardandoEdicionDivision, setGuardandoEdicionDivision] = useState(false)
   function cambiarDia(dia) {
   setDiasJuego((actuales) =>
     actuales.includes(dia)
@@ -55,6 +58,77 @@ const [temporadaSeleccionada, setTemporadaSeleccionada] = useState(null)
   setNuevaDivision('')
   setMensaje('División creada correctamente.')
   await cargarDivisiones()
+}
+
+// Editar únicamente el nombre de una división, sin cambiar su ID ni sus equipos.
+function iniciarEdicionDivision(division) {
+  setDivisionEditandoId(division.id)
+  setNombreDivisionEditada(division.nombre)
+  setMensaje('')
+}
+
+function cancelarEdicionDivision() {
+  if (guardandoEdicionDivision) return
+  setDivisionEditandoId(null)
+  setNombreDivisionEditada('')
+}
+
+async function guardarEdicionDivision(e, division) {
+  e.preventDefault()
+  if (guardandoEdicionDivision) return
+
+  const nombreLimpio = nombreDivisionEditada.trim()
+  if (!nombreLimpio) {
+    setMensaje('Escribe el nuevo nombre de la división.')
+    return
+  }
+
+  if (nombreLimpio === division.nombre) {
+    cancelarEdicionDivision()
+    return
+  }
+
+  // Evitar nombres duplicados dentro del mismo torneo.
+  const existeNombre = divisiones.some((otra) =>
+    otra.id !== division.id &&
+    otra.temporada_id === division.temporada_id &&
+    otra.nombre.trim().localeCompare(nombreLimpio, 'es', { sensitivity: 'base' }) === 0
+  )
+  if (existeNombre) {
+    setMensaje('Ya existe una división con ese nombre en este torneo.')
+    return
+  }
+
+  setGuardandoEdicionDivision(true)
+  setMensaje('')
+  try {
+    const { data, error } = await supabase
+      .from('divisiones')
+      .update({ nombre: nombreLimpio })
+      .eq('id', division.id)
+      .eq('temporada_id', division.temporada_id)
+      .eq('nombre', division.nombre)
+      .select('id, nombre')
+
+    if (error) throw error
+    if (!data || data.length !== 1) {
+      setMensaje('No se guardó el cambio. Verifica los permisos de edición o si otro administrador modificó la división.')
+      return
+    }
+
+    setDivisiones((actuales) => actuales.map((d) =>
+      d.id === division.id ? { ...d, nombre: data[0].nombre } : d
+    ))
+    setDivisionEditandoId(null)
+    setNombreDivisionEditada('')
+    setMensaje(`División actualizada de "${division.nombre}" a "${data[0].nombre}".`)
+    await cargarDivisiones()
+  } catch (error) {
+    console.error(error)
+    setMensaje('No se pudo editar la división: ' + (error.message || 'Error desconocido.'))
+  } finally {
+    setGuardandoEdicionDivision(false)
+  }
 }
 
 async function eliminarDivision(division) {
@@ -437,20 +511,59 @@ if (errorDias) {
   {divisiones
     .filter((division) => division.temporada_id === temporada.id)
     .map((division) => (
-      <div
-  key={division.id}
-  style={{ marginTop: '5px', display: 'flex', alignItems: 'center', gap: '10px' }}
->
-  <span>{division.nombre}</span>
-
-  <button
-    type="button"
-    onClick={() => eliminarDivision(division)}
-    style={{ cursor: 'pointer' }}
-  >
-    Eliminar
-  </button>
-</div>
+      <div key={division.id} style={{ marginTop: '8px' }}>
+        {divisionEditandoId === division.id ? (
+          <form
+            onSubmit={(e) => guardarEdicionDivision(e, division)}
+            style={{ display: 'flex', flexWrap: 'wrap', alignItems: 'center', gap: '8px' }}
+          >
+            <input
+              type="text"
+              aria-label={`Nuevo nombre para ${division.nombre}`}
+              value={nombreDivisionEditada}
+              onChange={(e) => setNombreDivisionEditada(e.target.value)}
+              disabled={guardandoEdicionDivision}
+              required
+              style={{ padding: '8px', flex: '1 1 200px', minWidth: '160px' }}
+            />
+            <button
+              type="submit"
+              disabled={guardandoEdicionDivision || !nombreDivisionEditada.trim()}
+              style={{ padding: '8px 12px', cursor: 'pointer' }}
+            >
+              {guardandoEdicionDivision ? 'Guardando...' : 'Guardar'}
+            </button>
+            <button
+              type="button"
+              onClick={cancelarEdicionDivision}
+              disabled={guardandoEdicionDivision}
+              style={{ padding: '8px 12px', cursor: 'pointer' }}
+            >
+              Cancelar
+            </button>
+          </form>
+        ) : (
+          <div style={{ display: 'flex', flexWrap: 'wrap', alignItems: 'center', gap: '10px' }}>
+            <span>{division.nombre}</span>
+            <button
+              type="button"
+              onClick={() => iniciarEdicionDivision(division)}
+              disabled={guardandoEdicionDivision}
+              style={{ cursor: 'pointer' }}
+            >
+              Editar
+            </button>
+            <button
+              type="button"
+              onClick={() => eliminarDivision(division)}
+              disabled={guardandoEdicionDivision}
+              style={{ cursor: 'pointer' }}
+            >
+              Eliminar
+            </button>
+          </div>
+        )}
+      </div>
     ))}
 
   <div style={{ marginTop: '10px' }}>
