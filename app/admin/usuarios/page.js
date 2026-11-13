@@ -28,6 +28,7 @@ export default function AdministrarUsuarios() {
   const [administradores, setAdministradores] = useState([])
   const [equipos, setEquipos] = useState([])
   const [delegados, setDelegados] = useState([])
+  const [solicitudes, setSolicitudes] = useState([])
   const [busqueda, setBusqueda] = useState('')
   const [resultados, setResultados] = useState([])
   const [busquedaRealizada, setBusquedaRealizada] = useState(false)
@@ -38,20 +39,26 @@ export default function AdministrarUsuarios() {
   const [error, setError] = useState('')
 
   async function cargarDatos() {
-    const [resAdmins, resEquipos, resDelegados] = await Promise.all([
+    const [resAdmins, resEquipos, resDelegados, resSolicitudes] = await Promise.all([
       supabase.rpc('listar_administradores_generales'),
       supabase.from('equipos').select('id, nombre, division_id').order('nombre'),
-      supabase.rpc('listar_delegados_detallados_admin')
+      supabase.rpc('listar_delegados_detallados_admin'),
+      supabase.rpc('listar_solicitudes_admin_equipo')
     ])
     if (resAdmins.error) throw resAdmins.error
     if (resEquipos.error) throw resEquipos.error
     if (resDelegados.error) throw resDelegados.error
+    if (resSolicitudes.error) throw resSolicitudes.error
     if (!Array.isArray(resDelegados.data)) {
       throw new Error('La función de delegados no devolvió una lista válida.')
+    }
+    if (!Array.isArray(resSolicitudes.data)) {
+      throw new Error('La función de solicitudes no devolvió una lista válida.')
     }
     setAdministradores(resAdmins.data || [])
     setEquipos(resEquipos.data || [])
     setDelegados(resDelegados.data)
+    setSolicitudes(resSolicitudes.data)
   }
 
   useEffect(() => {
@@ -161,12 +168,13 @@ export default function AdministrarUsuarios() {
       d.tipo === 'principal' && d.activo &&
       d.usuario_id !== usuarioSeleccionado.id
     )
-    const advertencia = otroPrincipal
-      ? '\nATENCIÓN: ya existe otro delegado principal activo para este equipo.'
-      : ''
+    if (otroPrincipal) {
+      setError('Este equipo ya tiene Administrador Principal activo. Puedes asignar un Auxiliar o desactivar primero al Principal anterior.')
+      return
+    }
     if (!window.confirm(
       `¿Asignar a ${usuarioSeleccionado.nombre || usuarioSeleccionado.correo} como ` +
-      `${tipo} de ${equipo?.nombre || 'este equipo'}?${advertencia}`
+      `${tipo} de ${equipo?.nombre || 'este equipo'}?`
     )) return
     setGuardando(true)
     try {
@@ -207,6 +215,39 @@ export default function AdministrarUsuarios() {
       setMensaje('Estado del delegado actualizado correctamente.')
     } catch (err) {
       setError('No se pudo cambiar el estado: ' + (err.message || 'Error desconocido.'))
+    } finally {
+      setGuardando(false)
+    }
+  }
+
+  async function resolverSolicitud(solicitud, decision, cargo = 'principal') {
+    if (guardando) return
+
+    const nombre = solicitud.usuario_nombre || solicitud.usuario_correo || 'este entrenador'
+    const equipo = solicitud.equipo_nombre || 'este equipo'
+    const accion = decision === 'aprobar'
+      ? `¿Aprobar a ${nombre} como Administrador ${cargo === 'principal' ? 'Principal' : 'Auxiliar'} de ${equipo} (ID ${solicitud.equipo_id})?`
+      : `¿Rechazar la solicitud de ${nombre} para ${equipo} (ID ${solicitud.equipo_id})?`
+
+    if (!window.confirm(accion)) return
+
+    setGuardando(true)
+    setError('')
+    setMensaje('')
+    try {
+      // La aprobación y asignación ocurren juntas en Supabase, con validación de permisos.
+      const { error: errorResolver } = await supabase.rpc('resolver_solicitud_admin_equipo', {
+        p_solicitud_id: solicitud.solicitud_id,
+        p_decision: decision,
+        p_tipo: cargo
+      })
+      if (errorResolver) throw errorResolver
+      await cargarDatos()
+      setMensaje(decision === 'aprobar'
+        ? 'Solicitud aprobada. El entrenador ya está vinculado al equipo.'
+        : 'Solicitud rechazada correctamente.')
+    } catch (err) {
+      setError('No se pudo procesar la solicitud: ' + (err.message || 'Error desconocido.'))
     } finally {
       setGuardando(false)
     }
@@ -356,6 +397,71 @@ export default function AdministrarUsuarios() {
               {delegado.activo ? 'Desactivar delegado' : 'Activar delegado'}
             </button>
           </div>
+        )
+      })}
+      <hr style={{ margin: '30px 0' }} />
+      <h2>4. Solicitudes para administrar equipos ({solicitudes.length})</h2>
+      <p>Los entrenadores registrados pueden solicitar administrar un equipo existente.
+        Solo un Administrador General puede aprobar o rechazar la solicitud.</p>
+      {solicitudes.length === 0 && (
+        <p>No hay solicitudes pendientes por el momento.</p>
+      )}
+      {solicitudes.map(solicitud => {
+        const tienePrincipal = delegados.some(d =>
+          String(d.equipo_id) === String(solicitud.equipo_id) &&
+          d.activo && d.tipo === 'principal'
+        )
+        return (
+          <section key={solicitud.solicitud_id} style={tarjeta}>
+            <h3 style={{ marginTop: 0 }}>
+              {solicitud.equipo_nombre} — ID {solicitud.equipo_id}
+            </h3>
+            <p>División: {solicitud.division_id ?? 'Sin asignar'}</p>
+            <p><strong>Entrenador:</strong> {solicitud.usuario_nombre || 'Usuario registrado'}</p>
+            <p style={{ overflowWrap: 'anywhere' }}>
+              <strong>Correo:</strong> {solicitud.usuario_correo || 'No disponible'}
+            </p>
+            {solicitud.mensaje && (
+              <p style={{ whiteSpace: 'pre-wrap', overflowWrap: 'anywhere' }}>
+                <strong>Mensaje:</strong> {solicitud.mensaje}
+              </p>
+            )}
+            <p style={{ color: '#475569', fontSize: 14 }}>
+              Solicitud recibida: {new Date(solicitud.creado_en).toLocaleString('es-MX')}
+            </p>
+            {tienePrincipal && (
+              <p style={{ color: '#92400e' }}>
+                Este equipo ya tiene un Administrador Principal activo.
+                Puedes aprobar como Auxiliar o revisar primero la asignación actual.
+              </p>
+            )}
+            <div style={{ display: 'flex', flexWrap: 'wrap', gap: 10 }}>
+              <button
+                type="button"
+                disabled={guardando || tienePrincipal}
+                onClick={() => resolverSolicitud(solicitud, 'aprobar', 'principal')}
+                style={{ ...boton, background: '#166534', opacity: (guardando || tienePrincipal) ? 0.55 : 1 }}
+              >
+                Aprobar como Principal
+              </button>
+              <button
+                type="button"
+                disabled={guardando}
+                onClick={() => resolverSolicitud(solicitud, 'aprobar', 'auxiliar')}
+                style={{ ...boton, background: '#0b2948' }}
+              >
+                Aprobar como Auxiliar
+              </button>
+              <button
+                type="button"
+                disabled={guardando}
+                onClick={() => resolverSolicitud(solicitud, 'rechazar')}
+                style={{ ...boton, background: '#b91c1c' }}
+              >
+                Rechazar solicitud
+              </button>
+            </div>
+          </section>
         )
       })}
       <p style={{ color: '#64748b', fontSize: 14, marginTop: 25 }}>
