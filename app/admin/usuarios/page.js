@@ -28,6 +28,7 @@ export default function AdministrarUsuarios() {
   const [administradores, setAdministradores] = useState([])
   const [equipos, setEquipos] = useState([])
   const [delegados, setDelegados] = useState([])
+  const [filtroDelegados, setFiltroDelegados] = useState('todos')
   const [solicitudes, setSolicitudes] = useState([])
   const [busqueda, setBusqueda] = useState('')
   const [resultados, setResultados] = useState([])
@@ -253,6 +254,15 @@ export default function AdministrarUsuarios() {
     }
   }
 
+  // El filtro es solo visual: no modifica asignaciones ni permisos en Supabase.
+  const delegadosActivos = delegados.filter(d => d.activo === true).length
+  const delegadosInactivos = delegados.filter(d => d.activo === false).length
+  const delegadosFiltrados = delegados.filter(d =>
+    filtroDelegados === 'todos' ||
+    (filtroDelegados === 'activos' && d.activo === true) ||
+    (filtroDelegados === 'inactivos' && d.activo === false)
+  )
+
   if (cargando) return <main style={{ padding: 30 }}>Verificando acceso y cargando usuarios...</main>
   if (!autorizado) return (
     <main style={{ padding: 30 }}>
@@ -379,8 +389,30 @@ export default function AdministrarUsuarios() {
 
       <hr style={{ margin: '30px 0' }} />
       <h2>3. Delegados de equipos ({delegados.length})</h2>
+      <div style={{ ...tarjeta, background: '#f8fafc' }}>
+        <label htmlFor="filtroDelegados" style={{ fontWeight: 'bold' }}>
+          Mostrar administradores de equipo
+        </label>
+        <select
+          id="filtroDelegados"
+          value={filtroDelegados}
+          onChange={e => setFiltroDelegados(e.target.value)}
+          style={campo}
+        >
+          <option value="todos">Todos ({delegados.length})</option>
+          <option value="activos">Activos ({delegadosActivos})</option>
+          <option value="inactivos">Inactivos ({delegadosInactivos})</option>
+        </select>
+        <p style={{ marginBottom: 0, fontSize: 13, color: '#475569' }}>
+          Mostrando {delegadosFiltrados.length} de {delegados.length} asignaciones.
+          Este filtro no cambia los permisos.
+        </p>
+      </div>
       {delegados.length === 0 && <p>No hay delegados asignados todavía.</p>}
-      {delegados.map(delegado => {
+      {delegados.length > 0 && delegadosFiltrados.length === 0 && (
+        <p>No hay administradores de equipo con el estado seleccionado.</p>
+      )}
+      {delegadosFiltrados.map(delegado => {
         const equipo = equipos.find(e => String(e.id) === String(delegado.equipo_id))
         return (
           <div key={delegado.id} style={tarjeta}>
@@ -388,7 +420,9 @@ export default function AdministrarUsuarios() {
             <p><strong>{delegado.nombre || 'Usuario registrado'}</strong></p>
             <p style={{ overflowWrap: 'anywhere' }}>{delegado.correo || 'Correo no disponible'}</p>
             <p>Tipo: {delegado.tipo === 'principal' ? 'Principal' : 'Auxiliar'}</p>
-            <p>Estado: <strong>{delegado.activo ? 'Activo' : 'Inactivo'}</strong></p>
+            <p>Estado: <strong style={{ color: delegado.activo ? '#166534' : '#64748b' }}>
+              {delegado.activo ? 'Activo' : 'Inactivo'}
+            </strong></p>
             <button
               type="button" disabled={guardando}
               onClick={() => cambiarEstado(delegado)}
