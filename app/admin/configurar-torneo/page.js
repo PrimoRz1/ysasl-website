@@ -132,6 +132,7 @@ export default function ConfigurarTorneoPage() {
   const [inscripciones, setInscripciones] = useState([])
   const [campos, setCampos] = useState([])
   const [preferencias, setPreferencias] = useState([])
+  const [horariosTemporada, setHorariosTemporada] = useState([])
   const [temporadaId, setTemporadaId] = useState('')
   const [nombre, setNombre] = useState('')
   const [fechaInicio, setFechaInicio] = useState('')
@@ -181,25 +182,37 @@ export default function ConfigurarTorneoPage() {
       supabase.from('inscripciones_equipo').select('id, equipo_id, division_id, activo'),
       supabase.from('campos').select('id, nombre, numero, activo').eq('activo', true).order('numero'),
       supabase.from('preferencias_horario_equipo').select('equipo_id, temporada_id, hora, tipo, activo').eq('activo', true),
+      supabase.from('horarios_temporada').select('temporada_id, hora, orden').order('orden'),
     ])
     const fallo = resultados.find((r) => r.error)
     if (fallo) {
       setMensaje(`No se pudieron cargar los datos: ${fallo.error.message}`)
       return
     }
-    const [ts, ds, es, ins, cs, prefs] = resultados.map((r) => r.data || [])
+    const [ts, ds, es, ins, cs, prefs, horarios] = resultados.map((r) => r.data || [])
     setTemporadas(ts)
     setDivisiones(ds)
     setEquipos(es)
     setInscripciones(ins)
     setCampos(cs)
     setPreferencias(prefs)
+    setHorariosTemporada(horarios)
     setCamposElegidos((actuales) => actuales === null ? cs.map((c) => Number(c.id)) : actuales)
   }
 
   const disponibles = temporadas.filter((t) => Number(t.id) !== TEMPORADA_PROTEGIDA && !t.activa)
   const temporada = disponibles.find((t) => String(t.id) === temporadaId)
-  const horariosDisponibles = horariosDeTemporada(temporada?.id)
+  const horariosDelTorneo = horariosTemporada
+  .filter((h) => Number(h.temporada_id) === Number(temporada?.id))
+  .sort((a, b) => Number(a.orden) - Number(b.orden))
+
+const horariosDisponibles = horariosDelTorneo.length
+  ? horariosDelTorneo.map(({ hora }) => {
+      const valor = String(hora).slice(0, 5)
+      const hora24 = Number(valor.slice(0, 2))
+      return [valor, `${hora24 % 12 || 12}:${valor.slice(3)} ${hora24 >= 12 ? 'PM' : 'AM'}`]
+    })
+  : horariosDeTemporada(temporada?.id)
   const divisionesTorneo = divisiones.filter((d) => Number(d.temporada_id) === Number(temporada?.id))
   const divisionActual = divisionesTorneo.find((d) => String(d.id) === divisionId)
 
@@ -223,7 +236,15 @@ export default function ConfigurarTorneoPage() {
     setPlan(null)
     setMensaje('')
     // Al cambiar de torneo, restaurar solo los horarios que le corresponden.
-    setHorariosElegidos(horariosDeTemporada(id).map(([hora]) => hora))
+    const guardados = horariosTemporada
+  .filter((h) => Number(h.temporada_id) === Number(id))
+  .sort((a, b) => Number(a.orden) - Number(b.orden))
+
+setHorariosElegidos(
+  guardados.length
+    ? guardados.map((h) => String(h.hora).slice(0, 5))
+    : horariosDeTemporada(id).map(([hora]) => hora)
+)
     const elegido = disponibles.find((t) => String(t.id) === id)
     setFechaCorregida(elegido?.fecha_inicio || '')
   }
