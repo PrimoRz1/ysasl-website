@@ -4,6 +4,15 @@ import { useEffect, useState } from 'react'
 import { useRouter } from 'next/navigation'
 import { supabase } from '../../../lib/supabase'
 
+const HORARIOS_HABITUALES = ['09:00', '11:00', '13:00', '15:00']
+const HORARIOS_ALTERNATIVOS = ['10:00', '12:00', '14:00']
+const TEMPORADA_INVIERNO_2026 = 10
+
+function etiquetaHorario(hora) {
+  const [horas, minutos] = String(hora).slice(0, 5).split(':').map(Number)
+  return `${horas % 12 || 12}:${String(minutos).padStart(2, '0')} ${horas >= 12 ? 'PM' : 'AM'}`
+}
+
 export default function AdminPartidosPage() {
   const router = useRouter()
 
@@ -32,8 +41,9 @@ const [partidosJornada, setPartidosJornada] = useState([])
   const [configLiguilla, setConfigLiguilla] = useState(null)
 const [equiposClasifican, setEquiposClasifican] = useState(8)
 const [formatoLiguilla, setFormatoLiguilla] = useState('top8')
-const [horariosSeleccionados, setHorariosSeleccionados] = useState(['09:00', '11:00', '13:00', '15:00'])
+const [horariosSeleccionados, setHorariosSeleccionados] = useState(HORARIOS_HABITUALES)
   const [preferenciasHorario, setPreferenciasHorario] = useState([])
+  const [horariosTemporada, setHorariosTemporada] = useState([])
 const [guardandoPreferencia, setGuardandoPreferencia] = useState(false)
   const [equipoPreferenciaId, setEquipoPreferenciaId] = useState('')
 const [horaPreferencia, setHoraPreferencia] = useState('09:00')
@@ -55,6 +65,7 @@ const [tipoPreferencia, setTipoPreferencia] = useState('preferida')
       { data: jornadasData, error: jornadasError },
       { data: camposData, error: camposError },
       { data: preferenciasData, error: preferenciasError },
+      { data: horariosTemporadaData, error: horariosTemporadaError },
     ] = await Promise.all([
       supabase
   .from('temporadas').select('id, nombre, activa, fecha_inicio, fecha_fin, formato, duracion_partido')
@@ -86,7 +97,10 @@ const [tipoPreferencia, setTipoPreferencia] = useState('preferida')
 supabase
   .from('preferencias_horario_equipo')
   .select('id, equipo_id, temporada_id, hora, tipo, activo')
-  .eq('activo', true)
+  .eq('activo', true),
+      supabase.from('horarios_temporada')
+        .select('temporada_id, hora, orden')
+        .order('orden')
     ])
 
     if (
@@ -96,7 +110,8 @@ supabase
       inscripcionesError ||
       jornadasError ||
       camposError ||
-preferenciasError
+preferenciasError ||
+      horariosTemporadaError
     ) {
       console.error({
         temporadasError,
@@ -104,7 +119,8 @@ preferenciasError
         equiposError,
         jornadasError,
         camposError,
-        preferenciasError
+        preferenciasError,
+        horariosTemporadaError
       })
 
       setError('No se pudieron cargar los datos.')
@@ -129,10 +145,33 @@ if (
     setJornadas(jornadasData || [])
     setCampos(camposData || [])
     setPreferenciasHorario(preferenciasData || [])
+    setHorariosTemporada(horariosTemporadaData || [])
     setCamposSeleccionados((camposData || []).map((campo) => Number(campo.id)))
 
     setCargando(false)
   }
+  // Los horarios se toman del torneo al que pertenece la división.
+  const divisionSeleccionadaActual = divisiones.find(
+    (division) => String(division.id) === String(divisionId)
+  )
+  const horariosGuardados = horariosTemporada
+    .filter((item) =>
+      Number(item.temporada_id) === Number(divisionSeleccionadaActual?.temporada_id)
+    )
+    .sort((a, b) => Number(a.orden) - Number(b.orden))
+  const horariosDisponibles = horariosGuardados.length
+    ? [...new Set(horariosGuardados.map((item) => String(item.hora).slice(0, 5)))]
+    : Number(divisionSeleccionadaActual?.temporada_id) === TEMPORADA_INVIERNO_2026
+      ? HORARIOS_ALTERNATIVOS
+      : HORARIOS_HABITUALES
+
+  useEffect(() => {
+    // Cambiar de división no debe arrastrar los turnos del torneo anterior.
+    setHorariosSeleccionados([...horariosDisponibles])
+    setHoraPreferencia(horariosDisponibles[0] || '')
+    setEquipoPreferenciaId('')
+  }, [divisionId, horariosTemporada, divisiones])
+
   async function cargarConfigLiguilla(idDivision) {
   if (!idDivision) {
     setConfigLiguilla(null)
@@ -280,6 +319,10 @@ function editarPartido(partido) {
   async function guardarPreferenciaHorario() {
   if (!equipoPreferenciaId || !divisionId) {
     setMensaje('Selecciona un equipo.')
+    return
+  }
+  if (!horariosDisponibles.includes(horaPreferencia)) {
+    setMensaje('Selecciona un horario disponible para este torneo.')
     return
   }
 
@@ -540,6 +583,11 @@ async function generarHorariosCampos() {
     setMensaje('Selecciona una jornada.')
     return
   }
+  if (horariosSeleccionados.length === 0 ||
+      horariosSeleccionados.some((turno) => !horariosDisponibles.includes(turno))) {
+    setMensaje('Selecciona horarios válidos para este torneo.')
+    return
+  }
 
   const pendientes = partidosJornada.filter(
     (partido) => !partido.hora || !partido.campo_id
@@ -603,8 +651,9 @@ async function generarHorariosCampos() {
     return
   }
 
-  if (horariosSeleccionados.length === 0) {
-    setMensaje('Selecciona por lo menos un horario.')
+  if (horariosSeleccionados.length === 0 ||
+      horariosSeleccionados.some((turno) => !horariosDisponibles.includes(turno))) {
+    setMensaje('Selecciona horarios válidos para este torneo.')
     return
   }
 
@@ -1106,6 +1155,9 @@ await cargarPartidosJornada(jornadaId)
               onChange={(e) => {
   const nuevaDivisionId = e.target.value
   setDivisionId(nuevaDivisionId)
+  setJornadaId('')
+  setPartidosJornada([])
+  setPartidoEditandoId(null)
   setConfigLiguilla(null)
   cargarConfigLiguilla(nuevaDivisionId)
 }}
@@ -1431,10 +1483,11 @@ const preferenciaGuardada = preferenciasHorario.find(
 )
 
   if (preferenciaGuardada) {
-    setHoraPreferencia(preferenciaGuardada.hora.slice(0, 5))
+    const guardada = preferenciaGuardada.hora.slice(0, 5)
+    setHoraPreferencia(horariosDisponibles.includes(guardada) ? guardada : horariosDisponibles[0])
     setTipoPreferencia(preferenciaGuardada.tipo)
   } else {
-    setHoraPreferencia('09:00')
+    setHoraPreferencia(horariosDisponibles[0] || '')
     setTipoPreferencia('preferida')
   }
 }}
@@ -1462,10 +1515,9 @@ const preferenciaGuardada = preferenciasHorario.find(
       onChange={(e) => setHoraPreferencia(e.target.value)}
       style={{ marginLeft: '10px' }}
     >
-      <option value="09:00">9:00 AM</option>
-      <option value="11:00">11:00 AM</option>
-      <option value="13:00">1:00 PM</option>
-      <option value="15:00">3:00 PM</option>
+      {horariosDisponibles.map((turno) => (
+        <option key={turno} value={turno}>{etiquetaHorario(turno)}</option>
+      ))}
     </select>
 
     <select
@@ -1488,9 +1540,10 @@ const preferenciaGuardada = preferenciasHorario.find(
   </div>
 </div>
   <div style={{ marginTop: '20px', marginBottom: '10px' }}>
-  <strong>Horarios disponibles:</strong>
+  <strong>Horarios disponibles para el torneo seleccionado:</strong>
+  {!divisionId && <p>Selecciona una división para ver los horarios de su torneo.</p>}
 
-  {['09:00', '11:00', '13:00', '15:00'].map((horario) => (
+  {divisionId && horariosDisponibles.map((horario) => (
     <label key={horario} style={{ marginLeft: '15px' }}>
       <input
         type="checkbox"
@@ -1506,13 +1559,7 @@ const preferenciaGuardada = preferenciasHorario.find(
         }}
       />
       {' '}
-      {horario === '09:00'
-        ? '9:00 AM'
-        : horario === '11:00'
-        ? '11:00 AM'
-        : horario === '13:00'
-        ? '1:00 PM'
-        : '3:00 PM'}
+      {etiquetaHorario(horario)}
     </label>
   ))}
 </div>
