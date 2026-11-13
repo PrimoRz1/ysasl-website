@@ -8,14 +8,29 @@ import { supabase } from '../../../lib/supabase'
 // Configuración de torneos nuevos. No modifica calendarios ya existentes.
 // La temporada oficial Verano / Invierno 2026 (id 1) queda excluida.
 const TEMPORADA_PROTEGIDA = 1
-// Orden general de preferencia de YSASL: 11 AM, 1 PM, 9 AM y 3 PM.
-const HORARIOS = [
+// Invierno 2026 (id 10) usa turnos distintos de los torneos anteriores.
+// No cambia la temporada oficial Verano / Invierno 2026 (id 1).
+const TEMPORADA_INVIERNO_2026 = 10
+const HORARIOS_HABITUALES = [
   ['11:00', '11:00 AM'],
   ['13:00', '1:00 PM'],
   ['09:00', '9:00 AM'],
   ['15:00', '3:00 PM'],
 ]
-const COSTO_HORARIO = { '11:00': 0, '13:00': 8, '09:00': 45, '15:00': 200 }
+const HORARIOS_INVIERNO_2026 = [
+  ['10:00', '10:00 AM'],
+  ['12:00', '12:00 PM'],
+  ['14:00', '2:00 PM'],
+]
+const COSTO_HORARIO = {
+  '11:00': 0, '13:00': 8, '09:00': 45, '15:00': 200,
+  '10:00': 0, '12:00': 8, '14:00': 16,
+}
+function horariosDeTemporada(id) {
+  return Number(id) === TEMPORADA_INVIERNO_2026
+    ? HORARIOS_INVIERNO_2026
+    : HORARIOS_HABITUALES
+}
 
 const caja = { border: '1px solid #ddd', borderRadius: 10, padding: 20, marginTop: 20 }
 const control = { padding: '9px', margin: '6px 10px 8px 0', maxWidth: '100%' }
@@ -133,7 +148,7 @@ export default function ConfigurarTorneoPage() {
   const [accionEquipo, setAccionEquipo] = useState('')
   const [nombreEquipoEditado, setNombreEquipoEditado] = useState('')
   const [divisionDestinoId, setDivisionDestinoId] = useState('')
-  const [horariosElegidos, setHorariosElegidos] = useState(['09:00', '11:00', '13:00', '15:00'])
+  const [horariosElegidos, setHorariosElegidos] = useState(HORARIOS_HABITUALES.map(([hora]) => hora))
   const [camposElegidos, setCamposElegidos] = useState(null)
   const [plan, setPlan] = useState(null)
   // 'pendientes' permite crear hoy Primera y después Segunda, sin regenerar Primera.
@@ -184,6 +199,7 @@ export default function ConfigurarTorneoPage() {
 
   const disponibles = temporadas.filter((t) => Number(t.id) !== TEMPORADA_PROTEGIDA && !t.activa)
   const temporada = disponibles.find((t) => String(t.id) === temporadaId)
+  const horariosDisponibles = horariosDeTemporada(temporada?.id)
   const divisionesTorneo = divisiones.filter((d) => Number(d.temporada_id) === Number(temporada?.id))
   const divisionActual = divisionesTorneo.find((d) => String(d.id) === divisionId)
 
@@ -206,6 +222,8 @@ export default function ConfigurarTorneoPage() {
     cancelarGestionEquipo()
     setPlan(null)
     setMensaje('')
+    // Al cambiar de torneo, restaurar solo los horarios que le corresponden.
+    setHorariosElegidos(horariosDeTemporada(id).map(([hora]) => hora))
     const elegido = disponibles.find((t) => String(t.id) === id)
     setFechaCorregida(elegido?.fecha_inicio || '')
   }
@@ -619,7 +637,7 @@ async function guardarFechaDivision(idDivision) {
 
       const fechas = [...new Set(definiciones.map((j) => j.fecha))]
       const espaciosOcupados = await obtenerOcupacion(fechas)
-      const horariosOrdenados = HORARIOS.map(([hora]) => hora).filter((h) => horariosElegidos.includes(h))
+      const horariosOrdenados = horariosDisponibles.map(([hora]) => hora).filter((h) => horariosElegidos.includes(h))
       const camposOrdenados = campos
         .filter((c) => (camposElegidos || []).includes(Number(c.id)))
         .sort((a, b) => Number(a.numero) - Number(b.numero))
@@ -907,9 +925,9 @@ async function guardarFechaDivision(idDivision) {
 
         <section style={caja}>
           <h2>4. Campos y horarios</h2>
-          <p>El sistema utilizará primero los horarios más tempranos disponibles y evitará duplicar campo y hora entre divisiones.</p>
+          <p>Horarios disponibles para {temporada.nombre}. El sistema distribuirá los turnos y evitará duplicar campo y hora entre divisiones.</p>
           <strong>Horarios</strong>
-          <div>{HORARIOS.map(([valor, etiqueta]) => <label key={valor} style={{ display: 'inline-block', margin: '8px 16px 8px 0' }}>
+          <div>{horariosDisponibles.map(([valor, etiqueta]) => <label key={valor} style={{ display: 'inline-block', margin: '8px 16px 8px 0' }}>
             <input type="checkbox" checked={horariosElegidos.includes(valor)} onChange={() => cambiarHorario(valor)} /> {etiqueta}
           </label>)}</div>
           <strong>Campos</strong>
@@ -928,7 +946,7 @@ async function guardarFechaDivision(idDivision) {
               {divisionesTorneo.map((d) => <option key={d.id} value={String(d.id)}>{d.nombre} (solo esta división)</option>)}
             </select>
           </label>
-          <p>Prioridad general de horarios: <strong>11:00 AM → 1:00 PM → 9:00 AM → 3:00 PM</strong>. Se equilibran los turnos por equipo, respetando las preferencias obligatorias.</p>
+          <p>Prioridad de horarios para {temporada.nombre}: <strong>{horariosDisponibles.map(([, etiqueta]) => etiqueta).join(' → ')}</strong>. Se equilibran los turnos por equipo, respetando las preferencias obligatorias.</p>
           <button type="button" style={boton} onClick={prepararCalendario} disabled={trabajando}>
             {trabajando ? 'Procesando...' : 'Ver vista previa (sin guardar)'}
           </button>
