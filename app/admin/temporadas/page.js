@@ -491,7 +491,7 @@ if (errorDias) {
 </div>
   <div style={{ marginTop: '15px' }}>
   <a
-    href={`/admin/partidos?temporada=${temporada.id}`}
+    href={`/admin/configurar-torneo?temporada=${temporada.id}`}
     style={{
       display: 'inline-block',
       padding: '10px 16px',
