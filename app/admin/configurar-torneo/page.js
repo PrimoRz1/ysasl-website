@@ -150,6 +150,8 @@ export default function ConfigurarTorneoPage() {
   const [nombreEquipoEditado, setNombreEquipoEditado] = useState('')
   const [divisionDestinoId, setDivisionDestinoId] = useState('')
   const [horariosElegidos, setHorariosElegidos] = useState(HORARIOS_HABITUALES.map(([hora]) => hora))
+  const [grupoHorarios, setGrupoHorarios] = useState('habituales')
+  const [horariosPendientes, setHorariosPendientes] = useState(false)
   const [camposElegidos, setCamposElegidos] = useState(null)
   const [plan, setPlan] = useState(null)
   // 'pendientes' permite crear hoy Primera y después Segunda, sin regenerar Primera.
@@ -202,17 +204,10 @@ export default function ConfigurarTorneoPage() {
 
   const disponibles = temporadas.filter((t) => Number(t.id) !== TEMPORADA_PROTEGIDA && !t.activa)
   const temporada = disponibles.find((t) => String(t.id) === temporadaId)
-  const horariosDelTorneo = horariosTemporada
-  .filter((h) => Number(h.temporada_id) === Number(temporada?.id))
-  .sort((a, b) => Number(a.orden) - Number(b.orden))
-
-const horariosDisponibles = horariosDelTorneo.length
-  ? horariosDelTorneo.map(({ hora }) => {
-      const valor = String(hora).slice(0, 5)
-      const hora24 = Number(valor.slice(0, 2))
-      return [valor, `${hora24 % 12 || 12}:${valor.slice(3)} ${hora24 >= 12 ? 'PM' : 'AM'}`]
-    })
-  : horariosDeTemporada(temporada?.id)
+  // El administrador elige el grupo; ya no depende del ID ni del nombre del torneo.
+  const horariosDisponibles = grupoHorarios === 'invierno'
+    ? HORARIOS_INVIERNO_2026
+    : HORARIOS_HABITUALES
   const divisionesTorneo = divisiones.filter((d) => Number(d.temporada_id) === Number(temporada?.id))
   const divisionActual = divisionesTorneo.find((d) => String(d.id) === divisionId)
 
@@ -235,16 +230,21 @@ const horariosDisponibles = horariosDelTorneo.length
     cancelarGestionEquipo()
     setPlan(null)
     setMensaje('')
-    // Al cambiar de torneo, restaurar solo los horarios que le corresponden.
+    // Restaurar la selección guardada para este torneo, sin tocar otros torneos.
     const guardados = horariosTemporada
-  .filter((h) => Number(h.temporada_id) === Number(id))
-  .sort((a, b) => Number(a.orden) - Number(b.orden))
-
-setHorariosElegidos(
-  guardados.length
-    ? guardados.map((h) => String(h.hora).slice(0, 5))
-    : horariosDeTemporada(id).map(([hora]) => hora)
-)
+      .filter((h) => Number(h.temporada_id) === Number(id))
+      .sort((a, b) => Number(a.orden) - Number(b.orden))
+    const esGrupoInvierno = guardados.length
+      ? guardados.every((h) => HORARIOS_INVIERNO_2026.some(([hora]) => hora === String(h.hora).slice(0, 5)))
+      : Number(id) === TEMPORADA_INVIERNO_2026
+    const grupo = esGrupoInvierno ? 'invierno' : 'habituales'
+    setGrupoHorarios(grupo)
+    setHorariosElegidos(
+      guardados.length
+        ? guardados.map((h) => String(h.hora).slice(0, 5))
+        : (esGrupoInvierno ? HORARIOS_INVIERNO_2026 : HORARIOS_HABITUALES).map(([hora]) => hora)
+    )
+    setHorariosPendientes(false)
     const elegido = disponibles.find((t) => String(t.id) === id)
     setFechaCorregida(elegido?.fecha_inicio || '')
   }
@@ -581,10 +581,75 @@ async function guardarFechaDivision(idDivision) {
     }
   }
 
+  function cambiarGrupoHorarios(grupo) {
+    if (grupo !== 'habituales' && grupo !== 'invierno') return
+    setGrupoHorarios(grupo)
+    const opciones = grupo === 'invierno' ? HORARIOS_INVIERNO_2026 : HORARIOS_HABITUALES
+    setHorariosElegidos(opciones.map(([hora]) => hora))
+    setHorariosPendientes(true)
+    setPlan(null)
+    setMensaje('')
+  }
+
   function cambiarHorario(hora) {
     setHorariosElegidos((actuales) => actuales.includes(hora) ? actuales.filter((h) => h !== hora) : [...actuales, hora])
+    setHorariosPendientes(true)
     setPlan(null)
   }
+
+  async function guardarHorariosTorneo() {
+    if (!temporada || trabajando || !horariosPendientes) return
+    if (Number(temporada.id) === TEMPORADA_PROTEGIDA || temporada.activa) {
+      return setMensaje('No se pueden cambiar los horarios de un torneo oficial o activo.')
+    }
+    const seleccion = horariosDisponibles
+      .map(([hora]) => hora)
+      .filter((hora) => horariosElegidos.includes(hora))
+    if (!seleccion.length) return setMensaje('Selecciona por lo menos un horario.')
+
+    setTrabajando(true)
+    setMensaje('')
+    try {
+      // No alterar horarios de un torneo que ya tenga jornadas programadas.
+      const idsDivisiones = divisionesTorneo.map((d) => d.id)
+      if (idsDivisiones.length) {
+        const { data: jornadas, error: errorJornadas } = await supabase.from('jornadas')
+          .select('id').in('division_id', idsDivisiones).limit(1)
+        if (errorJornadas) throw errorJornadas
+        if (jornadas?.length) throw new Error('Este torneo ya tiene jornadas. Sus horarios no se pueden cambiar.')
+      }
+
+      // Guardar primero las nuevas opciones para no perder las anteriores si falla.
+      const filas = seleccion.map((hora, indice) => ({
+        temporada_id: temporada.id, hora, orden: indice + 1,
+      }))
+      const { error: errorGuardar } = await supabase.from('horarios_temporada')
+        .upsert(filas, { onConflict: 'temporada_id,hora' })
+      if (errorGuardar) throw errorGuardar
+
+      const { data: actuales, error: errorConsultar } = await supabase.from('horarios_temporada')
+        .select('hora').eq('temporada_id', temporada.id)
+      if (errorConsultar) throw errorConsultar
+      const sobrantes = (actuales || [])
+        .map((h) => h.hora)
+        .filter((hora) => !seleccion.includes(String(hora).slice(0, 5)))
+      if (sobrantes.length) {
+        const { error: errorBorrar } = await supabase.from('horarios_temporada')
+          .delete().eq('temporada_id', temporada.id).in('hora', sobrantes)
+        if (errorBorrar) throw errorBorrar
+      }
+
+      await cargarDatos()
+      setHorariosPendientes(false)
+      setPlan(null)
+      setMensaje('Horarios guardados para este torneo. Los demás torneos no cambiaron.')
+    } catch (error) {
+      setMensaje(`No se pudieron guardar los horarios: ${error.message}`)
+    } finally {
+      setTrabajando(false)
+    }
+  }
+
   function cambiarCampo(id) {
     setCamposElegidos((actuales) => (actuales || []).includes(id) ? actuales.filter((x) => x !== id) : [...(actuales || []), id])
     setPlan(null)
@@ -602,6 +667,7 @@ async function guardarFechaDivision(idDivision) {
       if (!temporada.fecha_inicio) throw new Error('El torneo necesita una fecha de inicio. Corrígela arriba.')
       if (fechaCorregida !== temporada.fecha_inicio) throw new Error('Primero guarda el cambio de fecha de inicio.')
       if (!divisionesTorneo.length) throw new Error('Agrega por lo menos una división.')
+      if (horariosPendientes) throw new Error('Primero guarda los horarios seleccionados para este torneo.')
       if (!horariosElegidos.length || !(camposElegidos || []).length) throw new Error('Selecciona horarios y campos.')
 
       if (!divisionCalendarioId) throw new Error('Selecciona la división que ya tiene sus equipos completos.')
@@ -947,10 +1013,22 @@ async function guardarFechaDivision(idDivision) {
         <section style={caja}>
           <h2>4. Campos y horarios</h2>
           <p>Horarios disponibles para {temporada.nombre}. El sistema distribuirá los turnos y evitará duplicar campo y hora entre divisiones.</p>
+          <label>Grupo de horarios para este torneo:{' '}
+            <select value={grupoHorarios} onChange={(e) => cambiarGrupoHorarios(e.target.value)} style={control} disabled={trabajando}>
+              <option value="habituales">Habituales: 9 AM, 11 AM, 1 PM y 3 PM</option>
+              <option value="invierno">Alternativos: 10 AM, 12 PM y 2 PM</option>
+            </select>
+          </label>
+          <p>Elige el grupo y, si hace falta, desmarca algún turno. Guarda la selección para conservarla en este torneo.</p>
           <strong>Horarios</strong>
           <div>{horariosDisponibles.map(([valor, etiqueta]) => <label key={valor} style={{ display: 'inline-block', margin: '8px 16px 8px 0' }}>
-            <input type="checkbox" checked={horariosElegidos.includes(valor)} onChange={() => cambiarHorario(valor)} /> {etiqueta}
+            <input type="checkbox" checked={horariosElegidos.includes(valor)} onChange={() => cambiarHorario(valor)} disabled={trabajando} /> {etiqueta}
           </label>)}</div>
+          <div>
+            <button type="button" style={boton} onClick={guardarHorariosTorneo}
+              disabled={trabajando || !horariosPendientes || !horariosElegidos.length}>Guardar horarios de este torneo</button>
+            {horariosPendientes && <span>Hay cambios sin guardar.</span>}
+          </div>
           <strong>Campos</strong>
           <div>{campos.map((c) => <label key={c.id} style={{ display: 'inline-block', margin: '8px 16px 8px 0' }}>
             <input type="checkbox" checked={(camposElegidos || []).includes(Number(c.id))} onChange={() => cambiarCampo(Number(c.id))} /> Campo {c.numero}
@@ -967,7 +1045,7 @@ async function guardarFechaDivision(idDivision) {
               {divisionesTorneo.map((d) => <option key={d.id} value={String(d.id)}>{d.nombre} (solo esta división)</option>)}
             </select>
           </label>
-          <p>Prioridad de horarios para {temporada.nombre}: <strong>{horariosDisponibles.map(([, etiqueta]) => etiqueta).join(' → ')}</strong>. Se equilibran los turnos por equipo, respetando las preferencias obligatorias.</p>
+          <p>Prioridad de horarios para {temporada.nombre}: <strong>{horariosDisponibles.filter(([valor]) => horariosElegidos.includes(valor)).map(([, etiqueta]) => etiqueta).join(' → ')}</strong>. Se equilibran los turnos por equipo, respetando las preferencias obligatorias.</p>
           <button type="button" style={boton} onClick={prepararCalendario} disabled={trabajando}>
             {trabajando ? 'Procesando...' : 'Ver vista previa (sin guardar)'}
           </button>
