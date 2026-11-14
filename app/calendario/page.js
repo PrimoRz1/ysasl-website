@@ -2,6 +2,7 @@
 
 import { useEffect, useMemo, useState } from 'react'
 import { supabase } from '../../lib/supabase'
+import { buscarEquipoConEscudo } from '../../lib/escudos-publicos'
 
 const celda = {
   border: '1px solid #ddd',
@@ -104,10 +105,7 @@ function normalizarNombre(texto) {
 }
 
 function EscudoEquipo({ nombre, divisionId, escudos }) {
-  const equipo = escudos.find((e) =>
-    normalizarNombre(e.nombre) === normalizarNombre(nombre) &&
-    String(e.division_id) === String(divisionId)
-  )
+  const equipo = buscarEquipoConEscudo(nombre, divisionId, escudos.equipos, escudos.inscripciones)
   const ruta = equipo?.escudo_url || equipo?.logo_url || equipo?.escudo_path || null
   const url = ruta && /^https?:\/\//i.test(ruta)
     ? ruta
@@ -200,7 +198,7 @@ export default function Calendario() {
   const [temporadas, setTemporadas] = useState([])
   const [divisiones, setDivisiones] = useState([])
   const [partidos, setPartidos] = useState([])
-  const [escudos, setEscudos] = useState([])
+  const [escudos, setEscudos] = useState({ equipos: [], inscripciones: [] })
   const [temporadaId, setTemporadaId] = useState('')
   const [divisionId, setDivisionId] = useState('')
   const [cargando, setCargando] = useState(true)
@@ -267,9 +265,15 @@ export default function Calendario() {
         }))
 
         // Los escudos son opcionales: si falla su consulta, el calendario sigue funcionando.
-        const respuestaEscudos = await supabase.from('equipos').select('*')
+        const [respuestaEscudos, respuestaInscripciones] = await Promise.all([
+          supabase.from('equipos').select('*'),
+          supabase.from('inscripciones_equipo').select('equipo_id,division_id')
+        ])
         if (respuestaEscudos.error) {
           console.error('No se pudieron cargar los escudos:', respuestaEscudos.error.message)
+        }
+        if (respuestaInscripciones.error) {
+          console.error('No se pudieron consultar las inscripciones de los escudos:', respuestaInscripciones.error.message)
         }
 
         // Si la portada indica una división, abrir exactamente su temporada.
@@ -313,7 +317,7 @@ export default function Calendario() {
           setTemporadas(temporadasOficiales)
           setDivisiones(divisionesOficiales)
           setPartidos(partidosConFase)
-          setEscudos(respuestaEscudos.data || [])
+          setEscudos({ equipos: respuestaEscudos.data || [], inscripciones: respuestaInscripciones.data || [] })
           setTemporadaId(temporadaInicial ? String(temporadaInicial.id) : '')
           setDivisionId(divisionInicial ? String(divisionInicial.id) : '')
         }
