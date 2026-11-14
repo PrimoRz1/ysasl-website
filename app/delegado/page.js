@@ -435,6 +435,19 @@ export default function DelegadoPage() {
             ))}
           </select>
 
+          <button
+            type="button"
+            onClick={() => router.push('/imprimir-plantilla?equipo=' + encodeURIComponent(equipoId))}
+            disabled={!equipoId}
+            style={{
+              ...estiloBoton,
+              background: '#0b2948',
+              marginBottom: '24px'
+            }}
+          >
+            🖨️ Imprimir plantilla para árbitros
+          </button>
+
           <div style={{
             border: '1px solid #d5e2ee', background: '#f5f9fd',
             borderRadius: '10px', padding: '18px', marginBottom: '30px'
