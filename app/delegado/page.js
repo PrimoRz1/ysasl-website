@@ -28,6 +28,10 @@ export default function DelegadoPage() {
   const [enlaceManual, setEnlaceManual] = useState('')
   const [nuevoNombre, setNuevoNombre] = useState('')
   const [nuevoNumero, setNuevoNumero] = useState('')
+  const [archivoEscudo, setArchivoEscudo] = useState(null)
+  const [mensajeEscudo, setMensajeEscudo] = useState('')
+  const [errorEscudo, setErrorEscudo] = useState('')
+  const [versionArchivoEscudo, setVersionArchivoEscudo] = useState(0)
   // Consulta de solo lectura: jugadores dados de baja de otros equipos.
   const [busquedaOtros, setBusquedaOtros] = useState('')
   const [resultadosOtros, setResultadosOtros] = useState([])
@@ -46,7 +50,7 @@ export default function DelegadoPage() {
         }
         const { data: permisos, error: errorPermisos } = await supabase
           .from('delegados_equipo')
-          .select('equipo_id, tipo, equipos(nombre)')
+          .select('equipo_id, tipo, equipos(nombre, escudo_url)')
           .eq('usuario_id', data.user.id)
           .eq('activo', true)
         if (errorPermisos) throw errorPermisos
@@ -114,6 +118,69 @@ export default function DelegadoPage() {
     if (nombre) resultado[nombre] = (resultado[nombre] || 0) + 1
     return resultado
   }, {})
+
+  async function subirEscudoEquipo() {
+    if (!equipoId || !archivoEscudo || procesando !== null) return
+    setMensajeEscudo('')
+    setErrorEscudo('')
+
+    const tiposPermitidos = ['image/png', 'image/jpeg', 'image/webp']
+    if (!tiposPermitidos.includes(archivoEscudo.type)) {
+      setErrorEscudo('Selecciona una imagen PNG, JPG o WEBP.')
+      return
+    }
+    if (archivoEscudo.size > 2 * 1024 * 1024) {
+      setErrorEscudo('El escudo debe pesar 2 MB o menos.')
+      return
+    }
+
+    const equipoDestino = Number(equipoId)
+    const equipoPermiso = equipos.find((item) => Number(item.equipo_id) === equipoDestino)
+    if (!equipoPermiso) {
+      setErrorEscudo('No tienes permiso para cambiar el escudo de este equipo.')
+      return
+    }
+    if (equipoPermiso.equipos?.escudo_url &&
+        !window.confirm('¿Reemplazar el escudo actual de ' + equipoPermiso.equipos.nombre + '?')) {
+      return
+    }
+
+    setProcesando('subir-escudo')
+    try {
+      const extension = archivoEscudo.type === 'image/png' ? 'png'
+        : archivoEscudo.type === 'image/webp' ? 'webp' : 'jpg'
+      const ruta = `${equipoDestino}/${Date.now()}-${Math.random().toString(36).slice(2, 10)}.${extension}`
+      const { error: errorSubida } = await supabase.storage.from('escudos-equipos')
+        .upload(ruta, archivoEscudo, {
+          contentType: archivoEscudo.type,
+          upsert: false
+        })
+      if (errorSubida) throw new Error('No se pudo subir la imagen: ' + errorSubida.message)
+
+      const { data: urlData } = supabase.storage.from('escudos-equipos').getPublicUrl(ruta)
+      const { error: errorGuardar } = await supabase.rpc('establecer_escudo_equipo_delegado', {
+        p_equipo_id: equipoDestino,
+        p_ruta: ruta,
+        p_url: urlData.publicUrl
+      })
+      if (errorGuardar) {
+        throw new Error('No se pudo guardar el escudo: ' + errorGuardar.message)
+      }
+
+      setEquipos((anteriores) => anteriores.map((item) =>
+        Number(item.equipo_id) === equipoDestino
+          ? { ...item, equipos: { ...item.equipos, escudo_url: urlData.publicUrl } }
+          : item
+      ))
+      setArchivoEscudo(null)
+      setVersionArchivoEscudo((valor) => valor + 1)
+      setMensajeEscudo('Escudo guardado. Ya aparecerá en las páginas de YSASL.')
+    } catch (err) {
+      setErrorEscudo(err.message || 'No se pudo guardar el escudo. Inténtalo de nuevo.')
+    } finally {
+      setProcesando(null)
+    }
+  }
 
   async function copiarInvitacion() {
     if (!equipoId) return
@@ -409,6 +476,9 @@ export default function DelegadoPage() {
             value={equipoId}
             onChange={e => {
               setEquipoId(e.target.value)
+              setArchivoEscudo(null)
+              setMensajeEscudo('')
+              setErrorEscudo('')
               setEnlaceManual('')
               setSolicitudes([])
               setJugadores([])
@@ -447,6 +517,49 @@ export default function DelegadoPage() {
           >
             🖨️ Imprimir plantilla para árbitros
           </button>
+
+          <div style={{
+            border: '1px solid #d5e2ee', background: '#f5f9fd',
+            borderRadius: '10px', padding: '18px', marginBottom: '30px'
+          }}>
+            <h3 style={{ marginTop: 0 }}>Escudo de mi equipo</h3>
+            <p>
+              Sube o cambia el escudo de <strong>{nombreEquipo}</strong>.
+              Solo puedes modificar el escudo de tus equipos asignados.
+            </p>
+            {equipoActual?.equipos?.escudo_url ? (
+              <img
+                src={equipoActual.equipos.escudo_url}
+                alt={`Escudo actual de ${nombreEquipo}`}
+                style={{ width: '110px', height: '110px', objectFit: 'contain', display: 'block', marginBottom: '12px' }}
+              />
+            ) : <p>Este equipo todavía no tiene escudo.</p>}
+            <label htmlFor="archivo-escudo-delegado">Seleccionar imagen PNG, JPG o WEBP (máximo 2 MB)</label>
+            <input
+              key={`${equipoId}-${versionArchivoEscudo}`}
+              id="archivo-escudo-delegado"
+              type="file"
+              accept="image/png,image/jpeg,image/webp"
+              disabled={procesando !== null || cargandoDatos}
+              onChange={(e) => {
+                setArchivoEscudo(e.target.files?.[0] || null)
+                setMensajeEscudo('')
+                setErrorEscudo('')
+              }}
+              style={{ display: 'block', margin: '10px 0 14px', maxWidth: '100%' }}
+            />
+            <button
+              type="button"
+              disabled={!archivoEscudo || procesando !== null || cargandoDatos}
+              onClick={subirEscudoEquipo}
+              style={{ ...estiloBoton, background: '#0b2948' }}
+            >
+              {procesando === 'subir-escudo' ? 'Subiendo escudo...' :
+                equipoActual?.equipos?.escudo_url ? 'Cambiar escudo' : 'Subir escudo'}
+            </button>
+            {mensajeEscudo && <p role="status" style={{ color: '#166534' }}>{mensajeEscudo}</p>}
+            {errorEscudo && <p role="alert" style={{ color: '#b91c1c' }}>{errorEscudo}</p>}
+          </div>
 
           <div style={{
             border: '1px solid #d5e2ee', background: '#f5f9fd',
