@@ -1,5 +1,6 @@
 import { supabase } from '../lib/supabase'
 import LiguillaCuadro from './LiguillaCuadro'
+import { filtrarTemporadasOficiales, filtrarDivisionesOficiales, seleccionarTemporadaVigente } from '../lib/temporadas-publicas'
 
 export const dynamic = 'force-dynamic'
 
@@ -290,10 +291,23 @@ export default async function Home() {
   if (errorEscudos) console.error('Error consultando escudos:', errorEscudos.message)
   const escudos = escudosDatos || []
 
+  const { data: temporadas, error: errorTemporadas } = await supabase
+    .from('temporadas')
+    .select('id,nombre,activa')
+
   const { data: divisiones, error: errorDivisiones } = await supabase
     .from('divisiones')
-    .select('id, nombre')
+    .select('id,nombre,temporada_id,orden')
     .order('orden')
+
+  const temporadasOficiales = filtrarTemporadasOficiales(temporadas)
+  const divisionesOficiales = filtrarDivisionesOficiales(divisiones, temporadasOficiales)
+  const temporadaVigente = !errorTemporadas && !errorDivisiones
+    ? seleccionarTemporadaVigente(temporadasOficiales, divisionesOficiales)
+    : null
+  const divisionesClasificacion = divisionesOficiales.filter((division) =>
+    Number(division.temporada_id) === Number(temporadaVigente?.id)
+  )
 
   const { data: clasificacion, error: errorClasificacion } = await supabase
     .from('clasificacion')
@@ -636,10 +650,16 @@ export default async function Home() {
       <section style={{ marginTop: '40px', marginBottom: '60px' }}>
         <h2 style={{ marginBottom: '8px' }}>📊 Clasificación completa</h2>
         <p style={{ color: '#555', marginTop: 0 }}>
-          Todas las posiciones y estadísticas oficiales de cada división.
+          {temporadaVigente
+            ? `Posiciones actuales de ${temporadaVigente.nombre}.`
+            : 'La clasificación del torneo vigente estará disponible próximamente.'}
         </p>
 
-        {(divisiones || []).map((division) => {
+        {divisionesClasificacion.length === 0 && (
+          <p>No hay divisiones disponibles para el torneo vigente.</p>
+        )}
+
+        {divisionesClasificacion.map((division) => {
           const tabla = (clasificacion || []).filter(
             (fila) => Number(fila.division_id) === Number(division.id)
           )
@@ -714,6 +734,11 @@ export default async function Home() {
             </div>
           )
         })}
+        <p style={{ marginTop: '18px', textAlign: 'center' }}>
+          <a href="/clasificacion" style={{ color: '#0b4a84', fontWeight: 'bold' }}>
+            Ver clasificación e historial de torneos →
+          </a>
+        </p>
       </section>
 
       {patrocinadores && patrocinadores.length > 0 && (

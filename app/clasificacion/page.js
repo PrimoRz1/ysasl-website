@@ -1,4 +1,5 @@
 import { supabase } from '../../lib/supabase'
+import { filtrarTemporadasOficiales, filtrarDivisionesOficiales, seleccionarTemporadaVigente } from '../../lib/temporadas-publicas'
 
 export const dynamic = 'force-dynamic'
 
@@ -10,115 +11,52 @@ function cantidadClasificados(totalEquipos) {
   return 0
 }
 
-export default async function Clasificacion() {
-  const { data: divisiones, error: errorDivisiones } = await supabase
-    .from('divisiones')
-    .select('id, nombre')
-    .order('orden')
+export default async function Clasificacion({ searchParams }) {
+  const parametros = (await searchParams) || {}
+  const temporadaSolicitadaId = String(parametros.temporada || '')
 
-  const { data: partidos, error: errorPartidos } = await supabase
-    .from('partidos')
-    .select('*')
-    .eq('estado', 'finalizado')
-    .eq('fase', 'regular')
+  const [respuestaTemporadas, respuestaDivisiones, respuestaClasificacion] = await Promise.all([
+    supabase.from('temporadas').select('id,nombre,activa'),
+    supabase.from('divisiones').select('id,nombre,temporada_id,orden').order('orden'),
+    supabase.from('clasificacion')
+      .select('division_id,equipo,pj,pg,pe,pp,gf,gc,dg,pts')
+  ])
 
-  const { data: equipos, error: errorEquipos } = await supabase
-    .from('equipos')
-    .select('id, division_id, nombre')
+  const temporadasOficiales = filtrarTemporadasOficiales(respuestaTemporadas.data)
+  const divisionesOficiales = filtrarDivisionesOficiales(
+    respuestaDivisiones.data, temporadasOficiales
+  )
+  const temporadasConDivisiones = temporadasOficiales.filter((temporada) =>
+    divisionesOficiales.some((division) =>
+      Number(division.temporada_id) === Number(temporada.id)
+    )
+  ).sort((a, b) => Number(b.id) - Number(a.id))
 
-  const hayError = errorDivisiones || errorPartidos || errorEquipos
+  const temporadaVigente = seleccionarTemporadaVigente(
+    temporadasOficiales, divisionesOficiales
+  )
+  const temporadaSeleccionada = temporadasConDivisiones.find(
+    (temporada) => String(temporada.id) === temporadaSolicitadaId
+  ) || temporadaVigente
 
+  const divisionesVisibles = divisionesOficiales.filter((division) =>
+    Number(division.temporada_id) === Number(temporadaSeleccionada?.id)
+  )
+
+  const hayError = respuestaTemporadas.error ||
+    respuestaDivisiones.error || respuestaClasificacion.error
+
+  // Misma fuente oficial que utiliza la portada; cada división pertenece
+  // a una sola temporada, sin mezclar partidos de otros torneos.
   function calcularClasificacion(divisionId) {
-    const tabla = {}
-    const equiposDivision = (equipos || []).filter(
-      (equipo) => Number(equipo.division_id) === Number(divisionId)
-    )
-
-    equiposDivision.forEach((equipo) => {
-      tabla[equipo.id] = {
-        equipo: equipo.nombre,
-        pj: 0,
-        pg: 0,
-        pe: 0,
-        pp: 0,
-        gf: 0,
-        gc: 0,
-        dg: 0,
-        pts: 0,
-      }
-    })
-
-    const idsEquiposDivision = new Set(
-      equiposDivision.map((equipo) => Number(equipo.id))
-    )
-
-    const partidosDivision = (partidos || []).filter(
-      (partido) =>
-        idsEquiposDivision.has(Number(partido.local_id)) &&
-        idsEquiposDivision.has(Number(partido.visitante_id))
-    )
-
-    partidosDivision.forEach((partido) => {
-      const local = partido.local_id
-      const visitante = partido.visitante_id
-      const golesLocal = Number(partido.goles_local)
-      const golesVisitante = Number(partido.goles_visitante)
-
-      if (
-        !local ||
-        !visitante ||
-        Number.isNaN(golesLocal) ||
-        Number.isNaN(golesVisitante)
-      ) {
-        return
-      }
-
-      if (!tabla[local]) {
-        tabla[local] = {
-          equipo: equipos?.find((e) => Number(e.id) === Number(local))?.nombre || `Equipo ${local}`,
-          pj: 0, pg: 0, pe: 0, pp: 0, gf: 0, gc: 0, dg: 0, pts: 0,
-        }
-      }
-
-      if (!tabla[visitante]) {
-        tabla[visitante] = {
-          equipo: equipos?.find((e) => Number(e.id) === Number(visitante))?.nombre || `Equipo ${visitante}`,
-          pj: 0, pg: 0, pe: 0, pp: 0, gf: 0, gc: 0, dg: 0, pts: 0,
-        }
-      }
-
-      tabla[local].pj += 1
-      tabla[visitante].pj += 1
-
-      tabla[local].gf += golesLocal
-      tabla[local].gc += golesVisitante
-      tabla[visitante].gf += golesVisitante
-      tabla[visitante].gc += golesLocal
-
-      if (golesLocal > golesVisitante) {
-        tabla[local].pg += 1
-        tabla[local].pts += 3
-        tabla[visitante].pp += 1
-      } else if (golesLocal < golesVisitante) {
-        tabla[visitante].pg += 1
-        tabla[visitante].pts += 3
-        tabla[local].pp += 1
-      } else {
-        tabla[local].pe += 1
-        tabla[visitante].pe += 1
-        tabla[local].pts += 1
-        tabla[visitante].pts += 1
-      }
-    })
-
-    return Object.values(tabla)
-      .map((equipo) => ({ ...equipo, dg: equipo.gf - equipo.gc }))
-      .sort((a, b) => {
-        if (b.pts !== a.pts) return b.pts - a.pts
-        if (b.dg !== a.dg) return b.dg - a.dg
-        if (b.gf !== a.gf) return b.gf - a.gf
-        return a.equipo.localeCompare(b.equipo)
-      })
+    return (respuestaClasificacion.data || [])
+      .filter((fila) => Number(fila.division_id) === Number(divisionId))
+      .sort((a, b) =>
+        Number(b.pts || 0) - Number(a.pts || 0) ||
+        Number(b.dg || 0) - Number(a.dg || 0) ||
+        Number(b.gf || 0) - Number(a.gf || 0) ||
+        String(a.equipo).localeCompare(String(b.equipo))
+      )
   }
 
   const celda = {
@@ -156,11 +94,47 @@ export default async function Clasificacion() {
         Yuba Sutter Adult Soccer League
       </p>
 
+      <p style={{ color: '#0b2341', fontWeight: 'bold', marginBottom: '12px' }}>
+        Torneo: {temporadaSeleccionada?.nombre || 'Sin torneo disponible'}
+      </p>
+
+      {temporadasConDivisiones.length > 0 && (
+        <form action="/clasificacion" method="get" style={{
+          display: 'flex', flexWrap: 'wrap', gap: '10px', alignItems: 'center',
+          padding: '14px', background: '#f1f5f9', borderRadius: '9px'
+        }}>
+          <label htmlFor="temporada-clasificacion" style={{ fontWeight: 'bold' }}>
+            Consultar torneo:
+          </label>
+          <select id="temporada-clasificacion" name="temporada"
+            defaultValue={String(temporadaSeleccionada?.id || '')}
+            style={{ padding: '10px', maxWidth: '100%', borderRadius: '6px', border: '1px solid #94a3b8' }}>
+            {temporadasConDivisiones.map((temporada) => (
+              <option key={temporada.id} value={temporada.id}>
+                {temporada.nombre}{Number(temporada.id) === Number(temporadaVigente?.id) ? ' (vigente)' : ' (historial)'}
+              </option>
+            ))}
+          </select>
+          <button type="submit" style={{
+            background: '#0b2341', color: 'white', border: 0, borderRadius: '6px',
+            padding: '11px 16px', fontWeight: 'bold', cursor: 'pointer'
+          }}>Ver clasificación</button>
+        </form>
+      )}
+
+      <p style={{ color: '#64748b', fontSize: '14px' }}>
+        Puedes consultar los torneos anteriores sin alterar sus resultados.
+      </p>
+
       {hayError && (
         <p style={{ color: 'red' }}>Error al cargar la clasificación.</p>
       )}
 
-      {(divisiones || []).map((division) => {
+      {!hayError && divisionesVisibles.length === 0 && (
+        <p>No hay divisiones registradas para este torneo.</p>
+      )}
+
+      {divisionesVisibles.map((division) => {
         const clasificacion = calcularClasificacion(division.id)
         const cupos = cantidadClasificados(clasificacion.length)
 
@@ -171,7 +145,7 @@ export default async function Clasificacion() {
             </h2>
 
             {clasificacion.length === 0 ? (
-              <p>No hay resultados registrados para esta división.</p>
+              <p>Todavía no hay equipos o resultados disponibles para esta división.</p>
             ) : (
               <>
                 {cupos > 0 && (
