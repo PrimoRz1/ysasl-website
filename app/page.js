@@ -1,4 +1,5 @@
 import { supabase } from '../lib/supabase'
+import { buscarEquipoConEscudo } from '../lib/escudos-publicos'
 import LiguillaCuadro from './LiguillaCuadro'
 import { filtrarTemporadasOficiales, filtrarDivisionesOficiales, seleccionarTemporadaVigente } from '../lib/temporadas-publicas'
 
@@ -239,12 +240,9 @@ function elegirPartidosDestacados(partidos, clasificacion, divisiones, idsManual
   }).sort((a, b) => Number(b.manual) - Number(a.manual) || b.puntuacion - a.puntuacion || String(a.hora || '').localeCompare(String(b.hora || '')) || Number(a.id) - Number(b.id)).slice(0, 3)
 }
 
-// Busca el escudo por nombre y división; no cambia los registros existentes.
+// Busca el escudo del equipo inscrito en el torneo, sin modificar sus datos.
 function EscudoEquipo({ nombre, divisionId, escudos, size = 48 }) {
-  const equipo = escudos.find(e =>
-    normalizar(e.nombre) === normalizar(nombre) &&
-    String(e.division_id) === String(divisionId)
-  )
+  const equipo = buscarEquipoConEscudo(nombre, divisionId, escudos.equipos, escudos.inscripciones)
   const ruta = equipo?.escudo_url || equipo?.logo_url || equipo?.escudo_path || null
   const url = ruta && /^https?:\/\//i.test(ruta)
     ? ruta
@@ -286,10 +284,16 @@ function DetallesPatrocinador({ patrocinador }) {
 
 export default async function Home() {
   const campeonesVigentes = await cargarCampeonesVigentes()
-  const { data: escudosDatos, error: errorEscudos } = await supabase
-    .from('equipos').select('*')
-  if (errorEscudos) console.error('Error consultando escudos:', errorEscudos.message)
-  const escudos = escudosDatos || []
+  const [respuestaEscudos, respuestaInscripciones] = await Promise.all([
+    supabase.from('equipos').select('*'),
+    supabase.from('inscripciones_equipo').select('equipo_id,division_id')
+  ])
+  if (respuestaEscudos.error) console.error('Error consultando escudos:', respuestaEscudos.error.message)
+  if (respuestaInscripciones.error) console.error('Error consultando inscripciones para escudos:', respuestaInscripciones.error.message)
+  const escudos = {
+    equipos: respuestaEscudos.data || [],
+    inscripciones: respuestaInscripciones.data || []
+  }
 
   const { data: temporadas, error: errorTemporadas } = await supabase
     .from('temporadas')
