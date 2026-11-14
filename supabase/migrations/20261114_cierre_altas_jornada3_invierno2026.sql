@@ -139,14 +139,24 @@ BEGIN
     RETURN NEW;
   END IF;
 
+  -- Si el equipo no participa en Invierno 2026, no aplicar el bloqueo.
   IF NOT EXISTS (
     SELECT 1
-    FROM public.cierre_altas_jugadores_temporada c
-    JOIN public.divisiones d ON d.temporada_id = c.temporada_id
+    FROM public.divisiones d
     JOIN public.inscripciones_equipo i ON i.division_id = d.id
-    WHERE c.temporada_id = 10
+    WHERE d.temporada_id = 10
       AND i.activo = true
       AND i.equipo_id = NEW.equipo_id
+  ) THEN
+    RETURN NEW;
+  END IF;
+
+  -- Esperar a que termine cualquier cierre simultáneo al último resultado.
+  PERFORM pg_catalog.pg_advisory_xact_lock(22026, 30010);
+
+  IF NOT EXISTS (
+    SELECT 1 FROM public.cierre_altas_jugadores_temporada
+    WHERE temporada_id = 10
   ) THEN
     RETURN NEW;
   END IF;
