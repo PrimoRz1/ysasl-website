@@ -5,6 +5,20 @@
 -- No modifica jugadores, partidos, resultados ni la temporada oficial id 1.
 -- Ejecutar en Supabase SQL Editor ANTES de publicar la interfaz nueva.
 
+BEGIN;
+
+-- Verificar el torneo antes de instalar reglas en la base de datos real.
+DO $verificar_torneo$
+BEGIN
+  IF NOT EXISTS (
+    SELECT 1 FROM public.temporadas
+    WHERE id = 10 AND nombre ILIKE '%Invierno%2026%'
+  ) THEN
+    RAISE EXCEPTION 'No se encontró Invierno 2026 con ID 10. No se aplicó ningún cambio.';
+  END IF;
+END;
+$verificar_torneo$;
+
 CREATE TABLE IF NOT EXISTS public.cierre_altas_jugadores_temporada (
   temporada_id bigint PRIMARY KEY CHECK (temporada_id = 10),
   cerrado_en timestamptz NOT NULL DEFAULT now()
@@ -211,3 +225,5 @@ GRANT EXECUTE ON FUNCTION public.ysasl_altas_delegado_bloqueadas(bigint) TO auth
 -- Si la Jornada 3 ya estaba finalizada antes de aplicar la regla,
 -- registrar el cierre ahora; de lo contrario seguirá abierta.
 SELECT public.ysasl_verificar_cierre_altas_jornada3();
+
+COMMIT;
