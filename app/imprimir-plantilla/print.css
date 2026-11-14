@@ -1,0 +1,244 @@
+.pagina-plantilla-arbitros {
+  max-width: 900px;
+  margin: 32px auto;
+  padding: 0 18px;
+  color: #111827;
+  font-family: Arial, sans-serif;
+}
+
+.controles-plantilla {
+  border: 1px solid #dbe2ea;
+  border-radius: 12px;
+  background: #f8fafc;
+  padding: 22px;
+  margin-bottom: 24px;
+}
+
+.controles-plantilla h1 {
+  margin: 0 0 10px;
+  color: #0b2341;
+  font-size: 25px;
+}
+
+.controles-plantilla p {
+  line-height: 1.5;
+}
+
+.campos-control-plantilla {
+  display: grid;
+  grid-template-columns: repeat(auto-fit, minmax(220px, 1fr));
+  gap: 16px;
+  margin: 20px 0;
+}
+
+.campos-control-plantilla label {
+  display: flex;
+  flex-direction: column;
+  gap: 7px;
+  font-weight: 700;
+  font-size: 14px;
+}
+
+.campos-control-plantilla select,
+.campos-control-plantilla input {
+  width: 100%;
+  box-sizing: border-box;
+  padding: 11px;
+  border: 1px solid #b6c3d1;
+  border-radius: 7px;
+  font: inherit;
+  background: white;
+}
+
+.botones-plantilla {
+  display: flex;
+  gap: 12px;
+  flex-wrap: wrap;
+  margin-top: 18px;
+}
+
+.botones-plantilla button {
+  padding: 12px 18px;
+  border: none;
+  border-radius: 7px;
+  background: #0b2341;
+  color: white;
+  font-weight: 700;
+  cursor: pointer;
+}
+
+.botones-plantilla button:disabled {
+  opacity: .5;
+  cursor: not-allowed;
+}
+
+.botones-plantilla .boton-volver-plantilla {
+  background: #475569;
+}
+
+.hoja-plantilla {
+  background: white;
+  border: 1px solid #cbd5e1;
+  border-radius: 8px;
+  padding: 24px;
+  box-sizing: border-box;
+  color: #111;
+}
+
+.encabezado-plantilla {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: 15px;
+  border-bottom: 2px solid #0b2341;
+  padding-bottom: 10px;
+  margin-bottom: 12px;
+}
+
+.marca-plantilla {
+  font-weight: 800;
+  font-size: 26px;
+  letter-spacing: 1px;
+  color: #0b2341;
+}
+
+.subtitulo-plantilla {
+  font-size: 11px;
+}
+
+.tipo-plantilla {
+  text-align: right;
+  font-size: 16px;
+  font-weight: 800;
+}
+
+.datos-plantilla {
+  display: grid;
+  grid-template-columns: 1fr 1fr;
+  gap: 8px 20px;
+  margin: 12px 0 15px;
+  font-size: 13px;
+}
+
+.datos-plantilla div:first-child {
+  grid-column: 1 / -1;
+  font-size: 16px;
+}
+
+.tabla-plantilla {
+  width: 100%;
+  border-collapse: collapse;
+  table-layout: fixed;
+  font-size: 12px;
+}
+
+.tabla-plantilla th,
+.tabla-plantilla td {
+  border: 1px solid #525b67;
+  padding: 3px 7px;
+  text-align: left;
+  height: 27px;
+  box-sizing: border-box;
+}
+
+.tabla-plantilla th {
+  background: #e8edf3;
+  font-weight: 800;
+}
+
+.tabla-plantilla .columna-orden {
+  width: 7%;
+}
+
+.tabla-plantilla .columna-camiseta {
+  width: 15%;
+}
+
+.tabla-plantilla .columna-presente {
+  width: 18%;
+  text-align: center;
+}
+
+.tabla-plantilla .celda-centro {
+  text-align: center;
+}
+
+.casilla-asistencia {
+  display: inline-block;
+  width: 15px;
+  height: 15px;
+  border: 1.5px solid #111;
+  box-sizing: border-box;
+  vertical-align: middle;
+}
+
+.nota-plantilla {
+  font-size: 10px;
+  line-height: 1.3;
+  margin: 10px 0 0;
+}
+
+@page {
+  size: letter portrait;
+  margin: 10mm;
+}
+
+@media print {
+  body {
+    margin: 0 !important;
+    background: white !important;
+  }
+
+  body > header,
+  body > footer,
+  body > section[aria-label="Patrocinadores principales"],
+  .no-print {
+    display: none !important;
+  }
+
+  .pagina-plantilla-arbitros {
+    max-width: none !important;
+    width: 100% !important;
+    margin: 0 !important;
+    padding: 0 !important;
+  }
+
+  .hoja-plantilla {
+    border: none !important;
+    border-radius: 0 !important;
+    padding: 0 !important;
+    margin: 0 !important;
+    width: 100% !important;
+    break-inside: avoid;
+    page-break-inside: avoid;
+  }
+
+  .tabla-plantilla {
+    font-size: 11px;
+  }
+
+  .tabla-plantilla th,
+  .tabla-plantilla td {
+    height: 26px;
+    padding: 2px 6px;
+  }
+
+  .tabla-plantilla th {
+    background: #eee !important;
+    -webkit-print-color-adjust: exact;
+    print-color-adjust: exact;
+  }
+
+  .tabla-plantilla tr {
+    break-inside: avoid;
+    page-break-inside: avoid;
+  }
+
+  .datos-plantilla {
+    margin: 10px 0 12px;
+  }
+
+  .encabezado-plantilla {
+    margin-bottom: 10px;
+  }
+}
