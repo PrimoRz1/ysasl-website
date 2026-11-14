@@ -14,7 +14,7 @@ function obtenerEnlaceSeguro(enlace) {
 
 export default function BannerPublicidad() {
   const pathname = usePathname()
-  const ocultarBanner = pathname === '/admin' || pathname?.startsWith('/admin/')
+  const ocultarBanner = pathname === '/admin' || pathname?.startsWith('/admin/') || pathname === '/imprimir-plantilla'
   const [anuncios, setAnuncios] = useState([])
   const [actual, setActual] = useState(0)
 
