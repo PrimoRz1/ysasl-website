@@ -28,6 +28,8 @@ export default function DelegadoPage() {
   const [enlaceManual, setEnlaceManual] = useState('')
   const [nuevoNombre, setNuevoNombre] = useState('')
   const [nuevoNumero, setNuevoNumero] = useState('')
+  const [altasCerradas, setAltasCerradas] = useState(false)
+  const [verificandoAltas, setVerificandoAltas] = useState(true)
   const [archivoEscudo, setArchivoEscudo] = useState(null)
   const [mensajeEscudo, setMensajeEscudo] = useState('')
   const [errorEscudo, setErrorEscudo] = useState('')
@@ -73,10 +75,11 @@ export default function DelegadoPage() {
     let activo = true
     async function cargarDatos() {
       setCargandoDatos(true)
+      setVerificandoAltas(true)
       setError('')
       setMensaje('')
       try {
-        const [resSolicitudes, resJugadores, resBajas] = await Promise.all([
+        const [resSolicitudes, resJugadores, resBajas, resCierre] = await Promise.all([
           supabase.from('solicitudes_jugadores')
             .select('id, nombre, numero, estado, created_at')
             .eq('equipo_id', Number(equipoId))
@@ -89,20 +92,30 @@ export default function DelegadoPage() {
             .order('nombre'),
           supabase.rpc('listar_jugadores_baja_delegado', {
             p_equipo_id: Number(equipoId)
+          }),
+          supabase.rpc('ysasl_altas_delegado_bloqueadas', {
+            p_equipo_id: Number(equipoId)
           })
         ])
         if (!activo) return
+        setAltasCerradas(resCierre.error ? true : resCierre.data === true)
+        setVerificandoAltas(false)
         setSolicitudes(resSolicitudes.error ? [] : (resSolicitudes.data || []))
         setJugadores(resJugadores.error ? [] : (resJugadores.data || []))
         setJugadoresBaja(resBajas.error ? [] : (Array.isArray(resBajas.data) ? resBajas.data : []))
         const errores = [
           resSolicitudes.error && 'Solicitudes: ' + resSolicitudes.error.message,
           resJugadores.error && 'Plantilla: ' + resJugadores.error.message,
-          resBajas.error && 'Jugadores dados de baja: ' + resBajas.error.message
+          resBajas.error && 'Jugadores dados de baja: ' + resBajas.error.message,
+          resCierre.error && 'No se pudo verificar el cierre de inscripciones: ' + resCierre.error.message
         ].filter(Boolean)
         if (errores.length) setError(errores.join(' | '))
       } catch (err) {
-        if (activo) setError('No se pudieron cargar los datos: ' + err.message)
+        if (activo) {
+          setAltasCerradas(true)
+          setVerificandoAltas(false)
+          setError('No se pudieron cargar los datos: ' + err.message)
+        }
       } finally {
         if (activo) setCargandoDatos(false)
       }
@@ -113,6 +126,8 @@ export default function DelegadoPage() {
 
   const equipoActual = equipos.find(e => String(e.equipo_id) === equipoId)
   const nombreEquipo = equipoActual?.equipos?.nombre || `Equipo #${equipoId}`
+  const permitirAltas = !altasCerradas && !verificandoAltas
+  const mensajeCierre = 'Inscripciones cerradas tras finalizar la Jornada 3 de Invierno 2026. Solo un Administrador General puede incorporar jugadores.'
   const conteoNombres = jugadores.reduce((resultado, jugador) => {
     const nombre = String(jugador.nombre || '').trim().toLocaleLowerCase('es')
     if (nombre) resultado[nombre] = (resultado[nombre] || 0) + 1
@@ -201,6 +216,10 @@ export default function DelegadoPage() {
   async function agregarJugador(evento) {
     evento.preventDefault()
     if (procesando !== null || cargandoDatos || !equipoId) return
+    if (!permitirAltas) {
+      setError(mensajeCierre)
+      return
+    }
 
     setMensaje('')
     setError('')
@@ -270,6 +289,10 @@ export default function DelegadoPage() {
 
   async function resolverSolicitud(id, aprobar) {
     if (procesando !== null) return
+    if (aprobar && !permitirAltas) {
+      setError(mensajeCierre)
+      return
+    }
     setProcesando(`solicitud-${id}`)
     setMensaje('')
     setError('')
@@ -342,6 +365,10 @@ export default function DelegadoPage() {
 
   async function reactivarJugador(jugador) {
     if (procesando !== null || cargandoDatos || !equipoId) return
+    if (!permitirAltas) {
+      setError(mensajeCierre)
+      return
+    }
 
     const pertenece = jugadoresBaja.some(j =>
       Number(j.id) === Number(jugador.id) &&
@@ -476,6 +503,8 @@ export default function DelegadoPage() {
             value={equipoId}
             onChange={e => {
               setEquipoId(e.target.value)
+              setVerificandoAltas(true)
+              setAltasCerradas(false)
               setArchivoEscudo(null)
               setMensajeEscudo('')
               setErrorEscudo('')
@@ -561,6 +590,16 @@ export default function DelegadoPage() {
             {errorEscudo && <p role="alert" style={{ color: '#b91c1c' }}>{errorEscudo}</p>}
           </div>
 
+          {altasCerradas && !verificandoAltas && (
+            <div role="status" style={{
+              border: '1px solid #d97706', background: '#fffbeb',
+              borderRadius: '10px', padding: '14px', marginBottom: '22px'
+            }}>
+              <strong>Inscripciones de jugadores cerradas</strong>
+              <p style={{ marginBottom: 0 }}>{mensajeCierre} Puedes seguir consultando tu plantilla y dar de baja jugadores.</p>
+            </div>
+          )}
+
           <div style={{
             border: '1px solid #d5e2ee', background: '#f5f9fd',
             borderRadius: '10px', padding: '18px', marginBottom: '30px'
@@ -569,6 +608,7 @@ export default function DelegadoPage() {
             <p>
               Comparte el enlace de tu equipo. Cada jugador deberá registrarse
               y solicitar ingreso; el delegado aprobará su solicitud antes de incorporarlo.
+              {altasCerradas && ' Los nuevos ingresos requieren autorización del Administrador General.'}
             </p>
             <button
               type="button"
@@ -616,7 +656,7 @@ export default function DelegadoPage() {
                 value={nuevoNombre}
                 onChange={e => setNuevoNombre(e.target.value)}
                 maxLength={120}
-                disabled={procesando !== null || cargandoDatos}
+                disabled={procesando !== null || cargandoDatos || !permitirAltas}
                 required
                 style={{ display: 'block', width: '100%', padding: '10px',
                   boxSizing: 'border-box', marginTop: '6px', marginBottom: '14px' }}
@@ -630,13 +670,13 @@ export default function DelegadoPage() {
                 step="1"
                 value={nuevoNumero}
                 onChange={e => setNuevoNumero(e.target.value)}
-                disabled={procesando !== null || cargandoDatos}
+                disabled={procesando !== null || cargandoDatos || !permitirAltas}
                 style={{ display: 'block', width: '100%', padding: '10px',
                   boxSizing: 'border-box', marginTop: '6px', marginBottom: '14px' }}
               />
               <button
                 type="submit"
-                disabled={procesando !== null || cargandoDatos || !equipoId}
+                disabled={procesando !== null || cargandoDatos || !equipoId || !permitirAltas}
                 style={{ ...estiloBoton, background: '#16803c' }}
               >
                 {procesando === 'agregar-jugador' ? 'Guardando...' : 'Agregar jugador'}
@@ -664,7 +704,7 @@ export default function DelegadoPage() {
                 <div style={{ display: 'flex', gap: '12px', flexWrap: 'wrap' }}>
                   <button
                     type="button"
-                    disabled={procesando !== null}
+                    disabled={procesando !== null || !permitirAltas}
                     onClick={() => resolverSolicitud(solicitud.id, true)}
                     style={{ ...estiloBoton, background: '#16803c' }}
                   >
@@ -864,7 +904,7 @@ export default function DelegadoPage() {
                     </div>
                     <button
                       type="button"
-                      disabled={procesando !== null || cargandoDatos || fichaManualConDuplicadoVinculado}
+                      disabled={procesando !== null || cargandoDatos || !permitirAltas || fichaManualConDuplicadoVinculado}
                       onClick={() => reactivarJugador(jugador)}
                       style={{ ...estiloBoton, background: fichaManualConDuplicadoVinculado ? '#777' : '#16803c' }}
                     >
