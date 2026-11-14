@@ -272,11 +272,28 @@ export default function Calendario() {
           console.error('No se pudieron cargar los escudos:', respuestaEscudos.error.message)
         }
 
+        // Si la portada indica una división, abrir exactamente su temporada.
+        // Sin parámetro, elegir el partido futuro más cercano entre temporadas,
+        // evitando que una temporada anterior marcada activa tenga prioridad.
+        const divisionEnlace = new URLSearchParams(window.location.search).get('division')
+        const divisionSolicitada = divisionesOficiales.find(
+          (d) => String(d.id) === divisionEnlace
+        )
+        const hoy = hoyPacifico()
+        const proximoPartido = partidosCargados
+          .filter((p) => p.estado === 'programado' && p.fecha && p.fecha >= hoy)
+          .sort((a, b) => fechaYHora(a).localeCompare(fechaYHora(b)))[0]
+        const divisionProxima = divisionesOficiales.find(
+          (d) => Number(d.id) === Number(proximoPartido?.division_id)
+        )
+        const divisionPreferida = divisionSolicitada || divisionProxima
+
         const conPartidos = (t) => divisionesOficiales.some((d) =>
           Number(d.temporada_id) === Number(t.id) &&
           partidosCargados.some((p) => Number(p.division_id) === Number(d.id))
         )
         const temporadaInicial =
+          temporadasOficiales.find((t) => Number(t.id) === Number(divisionPreferida?.temporada_id)) ||
           temporadasOficiales.find((t) => t.activa && conPartidos(t)) ||
           temporadasOficiales.find(conPartidos) ||
           temporadasOficiales.find((t) => t.activa) ||
@@ -285,8 +302,7 @@ export default function Calendario() {
         const divisionesIniciales = divisionesOficiales.filter(
           (d) => Number(d.temporada_id) === Number(temporadaInicial?.id)
         )
-        const hoy = hoyPacifico()
-        const divisionInicial = divisionesIniciales.find((d) =>
+        const divisionInicial = divisionPreferida || divisionesIniciales.find((d) =>
           partidosCargados.some((p) =>
             Number(p.division_id) === Number(d.id) &&
             p.estado === 'programado' && p.fecha && p.fecha >= hoy
