@@ -304,7 +304,7 @@ export default function ImprimirPlantillaPage() {
             <div><strong>Equipo:</strong> {equipoSeleccionado.nombre}</div>
             <div><strong>División:</strong> {divisionSeleccionada?.nombre || '________________'}</div>
             <div><strong>Torneo:</strong> {temporadaSeleccionada?.nombre || '________________'}</div>
-            <div><strong>Fecha:</strong> {fecha ? fecha.split('-').reverse().join('/') : '____ / ____ / ______'}</div>
+            <div><strong>Fecha:</strong> {fecha ? `${fecha.slice(5, 7)}/${fecha.slice(8, 10)}/${fecha.slice(0, 4)}` : '____ / ____ / ______'}</div>
             <div><strong>Jornada:</strong> {jornada.trim() || '____________'}</div>
           </div>
 
