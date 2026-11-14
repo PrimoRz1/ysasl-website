@@ -351,6 +351,16 @@ export default async function Home() {
   }
   const partidosDestacados = elegirPartidosDestacados(partidos, clasificacion, divisiones, idsManuales)
 
+  // Abrir el calendario en la división del próximo partido visible en la portada.
+  // La división identifica también su temporada; si no hay partidos, el calendario
+  // decide automáticamente cuál mostrar.
+  const primerPartidoProximo = (partidos || []).find((partido) =>
+    (divisiones || []).some((division) => Number(division.id) === Number(partido.division_id))
+  )
+  const enlaceCalendarioActual = primerPartidoProximo
+    ? `/calendario?division=${encodeURIComponent(primerPartidoProximo.division_id)}`
+    : '/calendario'
+
   // Líderes de goleo: misma fuente que /goleadores, sin modificar estadísticas.
   const [respuestaGoles, respuestaJugadores, respuestaEquiposGoles] = await Promise.all([
     supabase.from('eventos_partido').select('jugador_id,equipo_id,tipo').eq('tipo', 'gol'),
@@ -617,7 +627,7 @@ export default async function Home() {
         )}
 
         <p style={{ textAlign: 'center', marginTop: '22px' }}>
-          <a href="/calendario" style={{ color: '#0b4a84', fontWeight: 'bold' }}>
+          <a href={enlaceCalendarioActual} style={{ color: '#0b4a84', fontWeight: 'bold' }}>
             Ver calendario y resultados completos →
           </a>
         </p>
