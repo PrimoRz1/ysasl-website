@@ -147,16 +147,30 @@
 }
 
 .tabla-plantilla .columna-orden {
-  width: 7%;
+  width: 5%;
 }
 
 .tabla-plantilla .columna-camiseta {
-  width: 15%;
+  width: 10%;
 }
 
 .tabla-plantilla .columna-presente {
+  width: 9%;
+  text-align: center;
+}
+
+.tabla-plantilla .columna-goles {
   width: 18%;
   text-align: center;
+}
+
+.tabla-plantilla .columna-tarjeta {
+  width: 6%;
+  text-align: center;
+}
+
+.tabla-plantilla .celda-goles {
+  background: white;
 }
 
 .tabla-plantilla .celda-centro {
@@ -214,13 +228,13 @@
   }
 
   .tabla-plantilla {
-    font-size: 11px;
+    font-size: 10px;
   }
 
   .tabla-plantilla th,
   .tabla-plantilla td {
     height: 26px;
-    padding: 2px 6px;
+    padding: 2px 3px;
   }
 
   .tabla-plantilla th {
