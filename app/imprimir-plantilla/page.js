@@ -209,7 +209,7 @@ export default function ImprimirPlantillaPage() {
       <section className="controles-plantilla no-print">
         <h1>Imprimir plantilla para árbitros</h1>
         <p>
-          Hoja de asistencia con 25 renglones. Los jugadores activos aparecen
+          Hoja de control de partido con 25 renglones. Los jugadores activos aparecen
           automáticamente; los espacios restantes quedan en blanco para anotaciones a mano.
         </p>
 
@@ -297,7 +297,7 @@ export default function ImprimirPlantillaPage() {
               <div className="marca-plantilla">YSASL</div>
               <div className="subtitulo-plantilla">Yuba Sutter Adult Soccer League</div>
             </div>
-            <div className="tipo-plantilla">CONTROL DE ASISTENCIA</div>
+            <div className="tipo-plantilla">CONTROL DE PARTIDO</div>
           </div>
 
           <div className="datos-plantilla">
@@ -314,7 +314,11 @@ export default function ImprimirPlantillaPage() {
                 <th className="columna-orden">N.º</th>
                 <th className="columna-camiseta">Camiseta</th>
                 <th>Nombre del jugador</th>
-                <th className="columna-presente">Presente ✓</th>
+                <th className="columna-presente">✓</th>
+                <th className="columna-goles">Goles</th>
+                <th className="columna-tarjeta">A1</th>
+                <th className="columna-tarjeta">A2</th>
+                <th className="columna-tarjeta">RD</th>
               </tr>
             </thead>
             <tbody>
@@ -324,13 +328,16 @@ export default function ImprimirPlantillaPage() {
                   <td className="celda-centro">{jugador?.numero ?? ''}</td>
                   <td>{jugador?.nombre || ''}</td>
                   <td className="celda-centro"><span className="casilla-asistencia" aria-hidden="true" /></td>
+                  <td className="celda-goles" />
+                  <td className="celda-centro" />
+                  <td className="celda-centro" />
+                  <td className="celda-centro" />
                 </tr>
               ))}
             </tbody>
           </table>
           <p className="nota-plantilla">
-            Marcar con una palomita a los jugadores presentes. Los renglones vacíos
-            son para anotaciones manuales y no sustituyen el registro oficial en YSASL.
+            ✓ = Presente · Goles = anotar cantidad o marcas · A1 = primera amarilla · A2 = segunda amarilla (expulsión) · RD = roja directa. Los espacios vacíos son para anotaciones manuales y no sustituyen el registro oficial en YSASL.
           </p>
         </article>
       )}
