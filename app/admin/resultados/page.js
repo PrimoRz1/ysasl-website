@@ -2,6 +2,7 @@
 
 import { useEffect, useState } from 'react'
 import { supabase } from '../../../lib/supabase'
+import './resultados.css'
 
 export default function AdminResultadosPage() {
   const [partidos, setPartidos] = useState([])
@@ -678,16 +679,9 @@ function agregarGoleador(partido, equipoId) {
 }
   
   return (
-    <main
-      style={{
-        maxWidth: '1100px',
-        margin: '0 auto',
-        padding: '35px 25px',
-        fontFamily: 'Arial, sans-serif',
-      }}
-    >
+    <main className="resultados-pagina">
       
-<div style={{ marginBottom: '25px' }}>
+<div className="resultados-navegacion">
   <button
     type="button"
     onClick={() => window.location.href = '/admin/jugadores'}
@@ -711,7 +705,7 @@ function agregarGoleador(partido, equipoId) {
         Captura el marcador final de los partidos.
       </p>
 
-<div style={{ marginTop: '20px', marginBottom: '25px' }}>
+<div className="resultados-filtros">
   <label>
     <strong>División:</strong>
   </label>
@@ -777,7 +771,7 @@ function agregarGoleador(partido, equipoId) {
       ) : partidos.length === 0 ? (
         <p>No hay partidos pendientes.</p>
       ) : (
-        <div style={{ marginTop: '25px' }}>
+        <div className="resultados-lista">
           {partidos
   .filter((partido) => {
     if (divisionId && Number(partido.division_id) !== Number(divisionId)) {
@@ -803,21 +797,8 @@ function agregarGoleador(partido, equipoId) {
     return true
   })
   .map((partido) => (
-            <div
-              key={partido.id}
-              style={{
-                border: '1px solid #ccc',
-                borderRadius: '8px',
-                padding: '18px',
-                marginBottom: '15px',
-              }}
-            >
-              <div
-                style={{
-                  marginBottom: '12px',
-                  fontWeight: 'bold',
-                }}
-              >
+            <div key={partido.id} className="resultados-partido">
+              <div className="resultados-partido-meta">
                 {etiquetaPartido(partido)}
                 {' — '}
                 {partido.fecha || 'Sin fecha'}
@@ -827,19 +808,14 @@ function agregarGoleador(partido, equipoId) {
                   : 'Sin hora'}
               </div>
 
-              <div
-                style={{
-                  display: 'flex',
-                  gap: '15px',
-                  alignItems: 'center',
-                  flexWrap: 'wrap',
-                }}
-              >
-                <strong>{partido.local}</strong>
+              <div className="resultados-partido-contenido">
+                <strong className="resultados-equipo-local">{partido.local}</strong>
 
                 <input
                   type="number"
                   min="0"
+                  aria-label={`Goles de ${partido.local}`}
+                  className="resultados-marcador-local"
                   value={goles[partido.id]?.local ?? ''}
                   onChange={(e) =>
                     cambiarGol(partido.id, 'local', e.target.value)
@@ -851,11 +827,13 @@ function agregarGoleador(partido, equipoId) {
                   }}
                 />
 
-                <span>vs</span>
+                <span className="resultados-vs">vs</span>
 
                 <input
                   type="number"
                   min="0"
+                  aria-label={`Goles de ${partido.visitante}`}
+                  className="resultados-marcador-visitante"
                   value={goles[partido.id]?.visitante ?? ''}
                   onChange={(e) =>
                     cambiarGol(
@@ -871,7 +849,7 @@ function agregarGoleador(partido, equipoId) {
                   }}
                 />
 
-                <strong>{partido.visitante}</strong>
+                <strong className="resultados-equipo-visitante">{partido.visitante}</strong>
 
                 {String(partido.fase || '').toLowerCase() === 'semifinal' && (
                   <p style={{ flexBasis: '100%', margin: '4px 0', color: '#645217', fontSize: '13px' }}>
@@ -920,10 +898,10 @@ function agregarGoleador(partido, equipoId) {
                     </div>
                   )}
 
-                <div style={{ marginTop: '15px', marginBottom: '15px' }}>
+                <div className="resultados-eventos">
   <strong>Goleadores:</strong>
 
-  <div style={{ marginTop: '8px' }}>
+  <div className="resultados-acciones">
     <button
       type="button"
       onClick={() => agregarGoleador(partido, equipos.find(e => e.nombre === partido.local)?.id)}
@@ -971,7 +949,7 @@ function agregarGoleador(partido, equipoId) {
 </button>
   </div>
 {(goleadores[partido.id] || []).map((gol, index) => (
-  <div key={index} style={{ marginTop: '8px' }}>
+  <div key={index} className="resultados-evento-fila">
     <select
       value={gol.jugador_id}
       onChange={(e) => {
@@ -1043,6 +1021,7 @@ function agregarGoleador(partido, equipoId) {
       </div>
                   
                   <button
+                  className="resultados-guardar"
                   onClick={() => guardarResultado(partido)}
                   disabled={guardandoId === partido.id}
                   style={{
