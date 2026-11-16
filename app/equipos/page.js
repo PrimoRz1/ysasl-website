@@ -82,12 +82,16 @@ export default async function EquiposPage() {
             >
               {equiposDivision?.map((equipo) => (
                 <Link
-  href={`/equipos/${equipo.id}`}
+                  href={`/equipos/${equipo.id}`}
                   key={equipo.id}
                   style={{
                     border: '1px solid #ddd',
                     borderRadius: '10px',
                     padding: '22px',
+                    display: 'flex',
+                    flexDirection: 'column',
+                    alignItems: 'center',
+                    gap: '12px',
                     textAlign: 'center',
                     background: 'white',
                   }}
@@ -100,7 +104,6 @@ export default async function EquiposPage() {
                         width: '70px',
                         height: '70px',
                         objectFit: 'contain',
-                        marginBottom: '12px',
                       }}
                     />
                   ) : (
@@ -116,7 +119,6 @@ export default async function EquiposPage() {
                         justifyContent: 'center',
                         fontWeight: 'bold',
                         fontSize: '22px',
-                        margin: '0 auto 12px',
                       }}
                     >
                       {equipo.nombre.charAt(0)}
