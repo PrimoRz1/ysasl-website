@@ -2,6 +2,7 @@
 
 import { useEffect, useState } from 'react'
 import { supabase } from '../../lib/supabase'
+import CampoContrasena from '../components/CampoContrasena'
 
 export default function RegistroPage() {
   const [nombre, setNombre] = useState('')
@@ -223,9 +224,8 @@ export default function RegistroPage() {
           />
 
           <label htmlFor="password">Contraseña</label>
-          <input
+          <CampoContrasena
             id="password"
-            type="password"
             value={password}
             onChange={e => setPassword(e.target.value)}
             required
@@ -235,9 +235,8 @@ export default function RegistroPage() {
           />
 
           <label htmlFor="confirmar">Confirmar contraseña</label>
-          <input
+          <CampoContrasena
             id="confirmar"
-            type="password"
             value={confirmar}
             onChange={e => setConfirmar(e.target.value)}
             required

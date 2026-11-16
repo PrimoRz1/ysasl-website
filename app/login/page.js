@@ -3,6 +3,7 @@
 import { Suspense, useEffect, useState } from 'react'
 import { useRouter, useSearchParams } from 'next/navigation'
 import { supabase } from '../../lib/supabase'
+import CampoContrasena from '../components/CampoContrasena'
 
 const estiloCampo = {
   width: '100%',
@@ -311,9 +312,8 @@ function LoginContenido() {
           />
 
           <label htmlFor="password-login">Contraseña</label>
-          <input
+          <CampoContrasena
             id="password-login"
-            type="password"
             value={password}
             onChange={e => setPassword(e.target.value)}
             required
@@ -349,9 +349,8 @@ function LoginContenido() {
       {modo === 'nueva' && (
         <form onSubmit={guardarNuevaContrasena}>
           <label htmlFor="password-nueva">Nueva contraseña</label>
-          <input
+          <CampoContrasena
             id="password-nueva"
-            type="password"
             value={nuevaPassword}
             onChange={e => setNuevaPassword(e.target.value)}
             minLength={8}
@@ -361,9 +360,8 @@ function LoginContenido() {
           />
 
           <label htmlFor="password-confirmar">Confirmar contraseña</label>
-          <input
+          <CampoContrasena
             id="password-confirmar"
-            type="password"
             value={confirmarPassword}
             onChange={e => setConfirmarPassword(e.target.value)}
             minLength={8}
