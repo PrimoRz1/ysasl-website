@@ -1,23 +1,60 @@
 import { supabase } from '../../lib/supabase'
+import {
+  filtrarDivisionesOficiales,
+  filtrarTemporadasOficiales,
+  seleccionarTemporadaVigente,
+} from '../../lib/temporadas-publicas'
 
 export const dynamic = 'force-dynamic'
 
-export default async function Resultados() {
-  const { data: divisiones, error: errorDivisiones } = await supabase
-    .from('divisiones')
-    .select('id, nombre')
-    .order('orden')
+export default async function Resultados({ searchParams }) {
+  const parametros = await searchParams
+  const [respuestaTemporadas, respuestaDivisiones] = await Promise.all([
+    supabase.from('temporadas').select('id,nombre,activa').order('id', { ascending: false }),
+    supabase.from('divisiones').select('id,nombre,temporada_id').order('orden').order('id'),
+  ])
 
-  const { data: partidos, error: errorPartidos } = await supabase
-    .from('calendario_partidos')
-    .select(
-      'id, jornada, division_id, division, fecha, hora, campo, local, visitante, goles_local, goles_visitante, estado'
-    )
-    .eq('estado', 'finalizado')
-    .order('division_id')
-    .order('jornada')
+  const temporadas = filtrarTemporadasOficiales(respuestaTemporadas.data)
+  const divisiones = filtrarDivisionesOficiales(respuestaDivisiones.data, temporadas)
+  const idsTemporadas = new Set(divisiones.map((division) => String(division.temporada_id)))
+  const temporadasDisponibles = temporadas.filter((temporada) => idsTemporadas.has(String(temporada.id)))
+  const vigente = seleccionarTemporadaVigente(temporadasDisponibles, divisiones)
+  const seleccionada = temporadasDisponibles.find(
+    (temporada) => String(temporada.id) === parametros?.temporada
+  ) || vigente
+  const divisionesVisibles = divisiones.filter(
+    (division) => String(division.temporada_id) === String(seleccionada?.id)
+  )
 
-  const hayError = errorDivisiones || errorPartidos
+  let hayError = respuestaTemporadas.error || respuestaDivisiones.error
+  const partidosPorDivision = new Map()
+  if (!hayError && divisionesVisibles.length > 0) {
+    const idsDivisiones = divisionesVisibles.map((division) => division.id)
+    const limite = 500
+    for (let desde = 0; ; desde += limite) {
+      const { data, error } = await supabase.from('calendario_partidos')
+        .select('id,jornada,division_id,fecha,local,visitante,goles_local,goles_visitante')
+        .in('division_id', idsDivisiones)
+        .eq('estado', 'finalizado')
+        .not('goles_local', 'is', null)
+        .not('goles_visitante', 'is', null)
+        .order('fecha', { ascending: true, nullsFirst: false })
+        .order('id')
+        .range(desde, desde + limite - 1)
+
+      if (error) {
+        hayError = error
+        break
+      }
+
+      for (const partido of data) {
+        const id = String(partido.division_id)
+        if (!partidosPorDivision.has(id)) partidosPorDivision.set(id, [])
+        partidosPorDivision.get(id).push(partido)
+      }
+      if (data.length < limite) break
+    }
+  }
 
   return (
     <main
@@ -31,18 +68,27 @@ export default async function Resultados() {
       <h1>Resultados</h1>
       <p>Yuba Sutter Adult Soccer League</p>
 
-      {hayError && (
-        <p>
-          Error conectando con Supabase:{' '}
-          {errorDivisiones?.message || errorPartidos?.message}
-        </p>
+      {temporadasDisponibles.length > 0 && (
+        <form action="/resultados" method="get"
+          style={{ display: 'flex', flexWrap: 'wrap', alignItems: 'center', gap: '10px' }}>
+          <label htmlFor="temporada-resultados">Temporada</label>
+          <select id="temporada-resultados" name="temporada"
+            defaultValue={String(seleccionada.id)} style={{ maxWidth: '100%', padding: '8px' }}>
+            {temporadasDisponibles.map((temporada) => (
+              <option key={temporada.id} value={temporada.id}>
+                {temporada.nombre}{temporada.id === vigente?.id ? ' (vigente)' : ''}
+              </option>
+            ))}
+          </select>
+          <button type="submit" style={{ padding: '8px 12px' }}>Ver resultados</button>
+        </form>
       )}
 
-      {divisiones?.map((division) => {
-        const partidosDivision =
-          partidos?.filter(
-            (partido) => partido.division_id === division.id
-          ) || []
+      {hayError && <p role="alert">No se pudieron cargar los resultados.</p>}
+      {!hayError && divisionesVisibles.length === 0 && <p>No hay divisiones disponibles.</p>}
+
+      {!hayError && divisionesVisibles.map((division) => {
+        const partidosDivision = partidosPorDivision.get(String(division.id)) || []
 
         const jornadas = [
           ...new Set(partidosDivision.map((partido) => partido.jornada)),
@@ -54,6 +100,7 @@ export default async function Resultados() {
             style={{ marginTop: '35px', marginBottom: '50px' }}
           >
             <h2>{division.nombre}</h2>
+            {jornadas.length === 0 && <p>Aún no hay resultados oficiales en esta división.</p>}
 
             {jornadas.map((jornada) => {
               const partidosJornada = partidosDivision.filter(
