@@ -125,11 +125,6 @@ export default function MisPanelesPage() {
       return
     }
 
-    if (!window.confirm(
-      `¿Enviar una solicitud para administrar ${equipo.nombre} ` +
-      `(equipo ID ${equipo.id})? Un Administrador General deberá aprobarla.`
-    )) return
-
     setEnviandoSolicitud(true)
     try {
       const { error: errorEnvio } = await supabase
@@ -224,9 +219,9 @@ export default function MisPanelesPage() {
             Administrador Principal o Auxiliar.
           </p>
 
-          {errorSolicitud && <p role="alert" style={{ color: '#b91c1c' }}>{errorSolicitud}</p>}
-          {exitoSolicitud && <p role="status" style={{ color: '#166534' }}>{exitoSolicitud}</p>}
-
+          {cargandoSolicitudes && errorSolicitud && (
+            <p role="alert" style={{ color: '#b91c1c' }}>{errorSolicitud}</p>
+          )}
           {cargandoSolicitudes ? (
             <p>Cargando equipos y solicitudes...</p>
           ) : (
@@ -287,6 +282,11 @@ export default function MisPanelesPage() {
                 >
                   {enviandoSolicitud ? 'Enviando solicitud...' : 'Enviar solicitud de administración'}
                 </button>
+                {!equipoSolicitado && !exitoSolicitud && equiposDisponibles.length > 0 && (
+                  <p>Selecciona un equipo para habilitar el envío.</p>
+                )}
+                {errorSolicitud && <p role="alert" style={{ color: '#b91c1c' }}>{errorSolicitud}</p>}
+                <p role="status" style={{ color: '#166534' }}>{exitoSolicitud}</p>
               </form>
 
               <h3 style={{ marginTop: 28 }}>Mis solicitudes</h3>
