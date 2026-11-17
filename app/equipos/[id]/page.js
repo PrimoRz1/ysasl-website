@@ -45,6 +45,20 @@ export default async function EquipoPage({ params }) {
     )
   }
 
+  let suspendidos = new Set()
+  let errorSuspensiones = null
+  if (!errorJugadores && jugadores?.length) {
+    const { data, error } = await supabase.rpc('listar_suspendidos_publicos', {
+      p_equipo_id: equipo.id,
+    })
+    errorSuspensiones = error
+    if (error) {
+      console.error('Error cargando suspensiones públicas:', error.message)
+    } else {
+      suspendidos = new Set((data || []).map(({ jugador_id }) => jugador_id))
+    }
+  }
+
   const n = Number(equipo.id)
   const paletaProvisional = paletas[
     Number.isFinite(n) ? Math.abs(n) % paletas.length : 0
@@ -98,6 +112,10 @@ export default async function EquipoPage({ params }) {
         {errorJugadores && (
           <p role="alert">Error cargando jugadores: {errorJugadores.message}</p>
         )}
+        {errorSuspensiones && (
+          <p role="alert">No se pudo consultar el estado de las suspensiones.</p>
+        )}
+
         {!errorJugadores && jugadores?.length === 0 && (
           <p>Todavía no hay jugadores registrados para este equipo.</p>
         )}
@@ -202,6 +220,15 @@ export default async function EquipoPage({ params }) {
                     }}>
                       {jugador.nombre}
                     </h3>
+                    {suspendidos.has(String(jugador.id)) && (
+                      <p style={{
+                        margin: '0 0 10px', padding: '8px',
+                        background: '#991b1b', color: '#fff',
+                        borderRadius: 8, fontSize: 13, fontWeight: 800,
+                      }}>
+                        Suspensión activa
+                      </p>
+                    )}
                     <p style={{
                       margin: 0, padding: '10px 8px',
                       background: '#ffffff14', border: '1px solid #ffffff24',
