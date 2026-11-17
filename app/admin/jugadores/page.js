@@ -3,6 +3,7 @@
 import { useEffect, useState } from 'react'
 import { useRouter } from 'next/navigation'
 import { supabase } from '../../../lib/supabase'
+import { EstadoConsultaSuspensiones, MarcaSuspension, useSuspensionesPlantilla } from '../../../lib/suspensionesPlantilla'
 
 // Solo sirve para detectar POSIBLES duplicados; no elimina ni une registros.
 function normalizarNombre(valor) {
@@ -26,6 +27,7 @@ export default function AdminJugadoresPage() {
   const [autorizado, setAutorizado] = useState(false)
   const [equipos, setEquipos] = useState([])
   const [jugadores, setJugadores] = useState([])
+  const suspensionesPlantilla = useSuspensionesPlantilla(jugadores)
   const [equipoId, setEquipoId] = useState('')
   const [nombre, setNombre] = useState('')
   const [numero, setNumero] = useState('')
@@ -345,6 +347,7 @@ export default function AdminJugadoresPage() {
 
       <section style={{ marginTop: 40 }}>
         <h2>Jugadores registrados</h2>
+        <EstadoConsultaSuspensiones resultado={suspensionesPlantilla} />
         <div style={{ display: 'flex', gap: 15, flexWrap: 'wrap', margin: '20px 0' }}>
           <div style={{ flex: 1, minWidth: 210 }}>
             <label htmlFor="buscar-jugador">Buscar por nombre o ID</label>
@@ -416,6 +419,7 @@ export default function AdminJugadoresPage() {
                         <>
                           <td style={celda}>
                             <strong>{jugador.nombre}</strong>
+                            {suspensionesPlantilla.ids?.has(String(jugador.id)) && <MarcaSuspension />}
                             <div style={{ fontSize: 12, color: '#555' }}>ID #{jugador.id}</div>
                             {posibles.length > 0 && (
                               <div style={{ fontSize: 12, color: '#9a5600', marginTop: 4 }}>

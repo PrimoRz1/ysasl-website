@@ -3,6 +3,7 @@
 import { useEffect, useState } from 'react'
 import { useRouter } from 'next/navigation'
 import { supabase } from '../../lib/supabase'
+import { EstadoConsultaSuspensiones, MarcaSuspension, useSuspensionesPlantilla } from '../../lib/suspensionesPlantilla'
 
 function normalizarNombre(valor) {
   return String(valor || '')
@@ -19,6 +20,7 @@ export default function DelegadoPage() {
   const [equipoId, setEquipoId] = useState('')
   const [solicitudes, setSolicitudes] = useState([])
   const [jugadores, setJugadores] = useState([])
+  const suspensionesPlantilla = useSuspensionesPlantilla(jugadores)
   const [jugadoresBaja, setJugadoresBaja] = useState([])
   const [cargando, setCargando] = useState(true)
   const [cargandoDatos, setCargandoDatos] = useState(false)
@@ -730,6 +732,7 @@ export default function DelegadoPage() {
             Revisa el nombre y el ID antes de dar de baja a alguien.
             La baja conserva su historial.
           </p>
+          <EstadoConsultaSuspensiones resultado={suspensionesPlantilla} />
           {cargandoDatos ? (
             <p>Cargando jugadores...</p>
           ) : jugadores.length === 0 ? (
@@ -752,6 +755,7 @@ export default function DelegadoPage() {
                   }}>
                     <div>
                       <strong>{jugador.nombre}</strong>
+                      {suspensionesPlantilla.ids?.has(String(jugador.id)) && <MarcaSuspension />}
                       <div style={{ fontSize: '13px', color: '#555', marginTop: '4px' }}>
                         ID #{jugador.id} · Camiseta: {jugador.numero ?? 'Sin número'}
                       </div>
