@@ -5,6 +5,9 @@ import { useRouter } from 'next/navigation'
 import { supabase } from '../../lib/supabase'
 import { EstadoConsultaSuspensiones, MarcaSuspension, useSuspensionesPlantilla } from '../../lib/suspensionesPlantilla'
 
+const ALTAS_DIRECTAS_HABILITADAS = false
+const MENSAJE_ALTAS_DIRECTAS = 'El alta directa está desactivada. Comparte el enlace de invitación para que cada jugador cree su cuenta y solicite ingreso. Si ya está en la plantilla, puede vincular su cuenta a su ficha.'
+
 function normalizarNombre(valor) {
   return String(valor || '')
     .normalize('NFD')
@@ -217,6 +220,7 @@ export default function DelegadoPage() {
 
   async function agregarJugador(evento) {
     evento.preventDefault()
+    if (!ALTAS_DIRECTAS_HABILITADAS) return
     if (procesando !== null || cargandoDatos || !equipoId) return
     if (!permitirAltas) {
       setError(mensajeCierre)
@@ -638,17 +642,17 @@ export default function DelegadoPage() {
           </div>
 
           <div style={{
-            border: '1px solid #d5e2ee', background: '#fff',
+            border: '1px solid #d5e2ee', background: ALTAS_DIRECTAS_HABILITADAS ? '#fff' : '#f1f5f9',
             borderRadius: '10px', padding: '18px', marginBottom: '30px'
           }}>
             <h3 style={{ marginTop: 0 }}>Agregar jugador directamente</h3>
-            <p>
+            {ALTAS_DIRECTAS_HABILITADAS ? <p>
               Registra un jugador en <strong>{nombreEquipo}</strong> sin esperar
               a que solicite ingreso. Solamente puedes agregar jugadores a tus equipos.
               Si el jugador ya aparece en la plantilla, no crees otra ficha:
               podrá vincular su cuenta más adelante. Si estuvo en otro equipo,
               utiliza primero la búsqueda de bajas que aparece más abajo.
-            </p>
+            </p> : <p id="altas-directas-desactivadas">{MENSAJE_ALTAS_DIRECTAS}</p>}
             <form onSubmit={agregarJugador}>
               <label htmlFor="nombre-jugador-nuevo">Nombre completo</label>
               <input
@@ -658,7 +662,7 @@ export default function DelegadoPage() {
                 value={nuevoNombre}
                 onChange={e => setNuevoNombre(e.target.value)}
                 maxLength={120}
-                disabled={procesando !== null || cargandoDatos || !permitirAltas}
+                disabled={!ALTAS_DIRECTAS_HABILITADAS || procesando !== null || cargandoDatos || !permitirAltas}
                 required
                 style={{ display: 'block', width: '100%', padding: '10px',
                   boxSizing: 'border-box', marginTop: '6px', marginBottom: '14px' }}
@@ -672,14 +676,16 @@ export default function DelegadoPage() {
                 step="1"
                 value={nuevoNumero}
                 onChange={e => setNuevoNumero(e.target.value)}
-                disabled={procesando !== null || cargandoDatos || !permitirAltas}
+                disabled={!ALTAS_DIRECTAS_HABILITADAS || procesando !== null || cargandoDatos || !permitirAltas}
                 style={{ display: 'block', width: '100%', padding: '10px',
                   boxSizing: 'border-box', marginTop: '6px', marginBottom: '14px' }}
               />
               <button
                 type="submit"
-                disabled={procesando !== null || cargandoDatos || !equipoId || !permitirAltas}
-                style={{ ...estiloBoton, background: '#16803c' }}
+                disabled={!ALTAS_DIRECTAS_HABILITADAS || procesando !== null || cargandoDatos || !equipoId || !permitirAltas}
+                aria-describedby={ALTAS_DIRECTAS_HABILITADAS ? undefined : 'altas-directas-desactivadas'}
+                style={{ ...estiloBoton, background: ALTAS_DIRECTAS_HABILITADAS ? '#16803c' : '#64748b',
+                  cursor: ALTAS_DIRECTAS_HABILITADAS ? estiloBoton.cursor : 'not-allowed' }}
               >
                 {procesando === 'agregar-jugador' ? 'Guardando...' : 'Agregar jugador'}
               </button>
