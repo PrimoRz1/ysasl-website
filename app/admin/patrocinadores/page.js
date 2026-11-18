@@ -216,6 +216,21 @@ const [descripcion, setDescripcion] = useState('')
         margin: '0 auto'
       }}
     >
+      <a
+        href="/admin"
+        style={{
+          display: 'inline-block',
+          marginBottom: '18px',
+          padding: '10px 16px',
+          backgroundColor: '#0b2341',
+          color: '#fff',
+          borderRadius: '8px',
+          textDecoration: 'none',
+          fontWeight: 'bold'
+        }}
+      >
+        ← Volver al panel de Administrador General
+      </a>
       <h1>Patrocinadores</h1>
       <p>Administración de patrocinadores de YSASL.</p>
 
