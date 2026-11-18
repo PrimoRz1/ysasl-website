@@ -2,6 +2,7 @@
 
 import { useEffect, useState } from 'react'
 import { supabase } from '../../lib/supabase'
+import { buscarEquipoConEscudo } from '../../lib/escudos-publicos'
 
 // Página pública de SOLO LECTURA: no inserta ni modifica campeones ni resultados.
 // La temporada 9 y las divisiones 12/13 son exclusivamente de simulación.
@@ -29,6 +30,20 @@ function normalizarPosicion(posicion) {
 
 function claveGrupo(registro) {
   return JSON.stringify([normalizar(registro.temporada), normalizar(registro.division)])
+}
+
+function escudoCampeon(registro) {
+  if (!registro || normalizarPosicion(registro.posicion) !== 'campeon') return null
+
+  if (claveGrupo(registro) === JSON.stringify(['verano / invierno 2026', 'segunda division']) &&
+      normalizar(registro.equipo) === 'catrachos') {
+    return '/escudos/catrachos-2026.webp'
+  }
+
+  const equipo = registro.equipoEscudo
+  const ruta = equipo?.escudo_url || equipo?.logo_url || equipo?.escudo_path
+  if (!ruta || /^https?:\/\//i.test(ruta)) return ruta
+  return supabase.storage.from('escudos-equipos').getPublicUrl(ruta).data.publicUrl
 }
 
 // No inventar un ganador si el partido no terminó o quedó empatado.
@@ -114,12 +129,12 @@ export default function CampeonesPage() {
           .map(Number).filter(n => Number.isInteger(n) && n > 0))]
         const equipos = []
         for (let i = 0; i < idsEquipos.length; i += 200) {
-          const resEquipos = await supabase.from('equipos').select('id,nombre')
+          const resEquipos = await supabase.from('equipos').select('*')
             .in('id', idsEquipos.slice(i, i + 200))
           if (resEquipos.error) throw resEquipos.error
           equipos.push(...(resEquipos.data || []))
         }
-        const nombresPorId = new Map(equipos.map(e => [Number(e.id), e.nombre]))
+        const equiposPorId = new Map(equipos.map(e => [Number(e.id), e]))
 
         const automaticos = []
         for (const d of divisionesOficiales) {
@@ -141,7 +156,8 @@ export default function CampeonesPage() {
 
           for (const [posicion, equipoId] of puestos) {
             if (!equipoId) continue
-            const nombreEquipo = nombresPorId.get(equipoId)
+            const equipo = equiposPorId.get(equipoId)
+            const nombreEquipo = equipo?.nombre
             if (!nombreEquipo) continue
             // Una foto histórica solo se reutiliza si corresponde al equipo ganador.
             const foto = fotos.find(r =>
@@ -155,6 +171,7 @@ export default function CampeonesPage() {
               temporada: t.nombre,
               division: d.nombre,
               equipo: nombreEquipo,
+              equipoEscudo: equipo,
               posicion,
               foto_path: foto?.foto_path || null,
             })
@@ -165,6 +182,28 @@ export default function CampeonesPage() {
         // del partido; las entradas manuales quedan como historial en las demás.
         const gruposAutomaticos = new Set(automaticos.map(claveGrupo))
         const historicos = fotos.filter(r => !gruposAutomaticos.has(claveGrupo(r)))
+        const campeonesHistoricos = historicos.filter(r => normalizarPosicion(r.posicion) === 'campeon')
+        if (campeonesHistoricos.length) {
+          const [resEquipos, resInscripciones] = await Promise.all([
+            supabase.from('equipos').select('*').in('nombre', [...new Set(campeonesHistoricos.map(r => r.equipo))]),
+            supabase.from('inscripciones_equipo').select('equipo_id,division_id').in('division_id', idsDivisiones),
+          ])
+          if (!resEquipos.error && !resInscripciones.error) {
+            const divisionesPorGrupo = new Map(divisionesOficiales.map(d => [
+              claveGrupo({ temporada: temporadasPorId.get(Number(d.temporada_id)).nombre, division: d.nombre }), d.id,
+            ]))
+            for (const registro of campeonesHistoricos) {
+              const divisionId = divisionesPorGrupo.get(claveGrupo(registro))
+              if (!divisionId) continue
+              const inscritos = (resInscripciones.data || []).filter(i => Number(i.division_id) === Number(divisionId))
+              const idsInscritos = new Set(inscritos.map(i => Number(i.equipo_id)))
+              const candidatos = (resEquipos.data || []).filter(e =>
+                idsInscritos.has(Number(e.id)) || Number(e.division_id) === Number(divisionId)
+              )
+              registro.equipoEscudo = buscarEquipoConEscudo(registro.equipo, divisionId, candidatos, inscritos)
+            }
+          }
+        }
         if (activo) setRegistros([...automaticos, ...historicos])
       } catch (err) {
         if (activo) {
@@ -252,6 +291,7 @@ export default function CampeonesPage() {
           }}>
             {posiciones.map(lugar => {
               const equipo = grupo.registros.find(r => normalizarPosicion(r.posicion) === lugar.id)
+              const escudoUrl = escudoCampeon(equipo)
               const fotoUrl = equipo?.foto_path
                 ? supabase.storage.from('fotos-finalistas').getPublicUrl(equipo.foto_path).data.publicUrl
                 : null
@@ -271,7 +311,15 @@ export default function CampeonesPage() {
                       placeItems: 'center', color: '#666',
                     }}>📷 Fotografía pendiente</div>
                   )}
-                  <p style={{ padding: '0 12px 16px', fontWeight: 'bold' }}>
+                  <p style={{
+                    padding: '0 12px 16px', fontWeight: 'bold', display: 'flex',
+                    alignItems: 'center', justifyContent: 'center', gap: 12,
+                  }}>
+                    {escudoUrl && (
+                      <img src={escudoUrl} alt="" width={60} height={60} loading="lazy"
+                        onError={e => { e.currentTarget.hidden = true }}
+                        style={{ objectFit: 'contain', flexShrink: 0 }} />
+                    )}
                     {equipo?.equipo || 'Por definir'}
                   </p>
                 </article>
