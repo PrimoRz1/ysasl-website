@@ -21,10 +21,12 @@ export default function DescargarTarjeta({ jugador, equipo, colores }) {
     try {
       const [primario, oscuro, dorado] = colores
       const canvas = document.createElement('canvas')
-      canvas.width = 900
-      canvas.height = 1320
+      canvas.width = 1200
+      canvas.height = 1760
       const ctx = canvas.getContext('2d')
       if (!ctx) throw new Error('No se pudo crear la tarjeta.')
+      // Escala el diseño completo a mayor resolución real, manteniendo proporciones.
+      ctx.scale(4 / 3, 4 / 3)
       ctx.fillStyle = oscuro
       ctx.fillRect(0, 0, 900, 1320)
       const fondo = ctx.createLinearGradient(0, 0, 900, 950)
