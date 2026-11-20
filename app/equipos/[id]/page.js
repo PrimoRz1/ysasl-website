@@ -148,8 +148,8 @@ export default async function EquipoPage({ params }) {
                         }} />
                     )}
 
-                    {(jugador.foto_uniforme_url || jugador.foto_url) ? (
-                      <img src={jugador.foto_uniforme_url || jugador.foto_url}
+                    {(jugador.foto_url || jugador.foto_uniforme_url) ? (
+                      <img src={jugador.foto_url || jugador.foto_uniforme_url}
                         alt={`Fotografía de ${jugador.nombre}`}
                         loading="lazy"
                         style={{
