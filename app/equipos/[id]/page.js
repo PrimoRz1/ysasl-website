@@ -138,7 +138,7 @@ export default async function EquipoPage({ params }) {
                   boxShadow: '0 12px 28px rgba(9,26,45,.22)',
                 }}>
                   <div style={{
-                    position: 'relative', height: 310,
+                    position: 'relative', height: 280,
                     background: `linear-gradient(155deg, ${primario} 8%, ${oscuro} 88%)`,
                     overflow: 'hidden',
                   }}>
