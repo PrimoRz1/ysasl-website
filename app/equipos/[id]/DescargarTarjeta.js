@@ -80,13 +80,7 @@ export default function DescargarTarjeta({ jugador, equipo, colores }) {
       ctx.font = 'bold 30px Arial, sans-serif'
       ctx.fillText(String(equipo.nombre || '').toLocaleUpperCase('es'), 450, 1120, 820)
       if (escudo) {
-        if (String(equipo.nombre || '').trim().toUpperCase() === 'ROMITA') {
-          ctx.drawImage(escudo, 735, 685, 125, 125)
-        } else {
-          ctx.fillStyle = '#ffffff'
-          ctx.fillRect(735, 685, 125, 125)
-          ctx.drawImage(escudo, 746, 696, 103, 103)
-        }
+        ctx.drawImage(escudo, 735, 685, 125, 125)
       }
       ctx.strokeStyle = dorado
       ctx.lineWidth = 9
