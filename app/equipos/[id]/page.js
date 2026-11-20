@@ -124,7 +124,7 @@ export default async function EquipoPage({ params }) {
         {!errorJugadores && jugadores && jugadores.length > 0 && (
           <div style={{
             display: 'grid',
-            gridTemplateColumns: 'repeat(auto-fill, minmax(min(100%, 240px), 1fr))',
+            gridTemplateColumns: 'repeat(auto-fill, minmax(min(100%, 220px), 1fr))',
             gap: 22, alignItems: 'start',
           }}>
             {jugadores.map((jugador) => (
@@ -134,11 +134,12 @@ export default async function EquipoPage({ params }) {
                 style={{ display: 'block', textDecoration: 'none', color: 'inherit' }}>
                 <article style={{
                   border: `2px solid ${dorado}`, borderRadius: 21,
+                  aspectRatio: '5 / 7', display: 'flex', flexDirection: 'column',
                   overflow: 'hidden', background: oscuro, color: 'white',
                   boxShadow: '0 12px 28px rgba(9,26,45,.22)',
                 }}>
                   <div style={{
-                    position: 'relative', height: 280,
+                    position: 'relative', flex: '1 1 auto', minHeight: 0,
                     background: `linear-gradient(155deg, ${primario} 8%, ${oscuro} 88%)`,
                     overflow: 'hidden',
                   }}>
@@ -206,15 +207,15 @@ export default async function EquipoPage({ params }) {
                     background: `linear-gradient(90deg, ${dorado}, #fff4b6, ${dorado})`,
                   }} />
 
-                  <div style={{ padding: '18px 12px 20px', textAlign: 'center' }}>
+                  <div style={{ padding: '10px 10px 12px', textAlign: 'center', flex: '0 0 110px', display: 'flex', flexDirection: 'column', justifyContent: 'space-between' }}>
                     <p style={{
-                      margin: '0 0 9px', color: dorado, fontSize: 11,
+                      margin: '0 0 3px', color: dorado, fontSize: 10,
                       fontWeight: 800, letterSpacing: 2,
                     }}>
                       YSASL · JUGADOR
                     </p>
                     <h3 style={{
-                      margin: '0 0 14px', fontSize: 19, fontWeight: 900,
+                      margin: '0 0 5px', fontSize: 16, fontWeight: 900,
                       textTransform: 'uppercase', lineHeight: 1.2,
                       overflowWrap: 'anywhere',
                     }}>
@@ -230,7 +231,7 @@ export default async function EquipoPage({ params }) {
                       </p>
                     )}
                     <p style={{
-                      margin: 0, padding: '10px 8px',
+                      margin: 0, padding: '6px 8px',
                       background: '#ffffff14', border: '1px solid #ffffff24',
                       borderRadius: 999, fontSize: 12, fontWeight: 800,
                     }}>
