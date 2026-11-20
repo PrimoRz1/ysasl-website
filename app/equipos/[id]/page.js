@@ -1,5 +1,6 @@
 import { supabase } from '../../../lib/supabase'
 import Link from 'next/link'
+import DescargarTarjeta from './DescargarTarjeta'
 
 export const dynamic = 'force-dynamic'
 
@@ -239,6 +240,7 @@ export default async function EquipoPage({ params }) {
                   </div>
                 </article>
               </Link>
+              <DescargarTarjeta jugador={{ nombre: jugador.nombre, numero: jugador.numero, foto: jugador.foto_url || jugador.foto_uniforme_url }} equipo={{ nombre: equipo.nombre, escudo_url: equipo.escudo_url }} colores={[primario, oscuro, dorado]} />
             ))}
           </div>
         )}
