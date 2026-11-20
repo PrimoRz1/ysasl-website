@@ -21,10 +21,12 @@ export default function DescargarTarjeta({ jugador, equipo, colores }) {
     try {
       const [primario, oscuro, dorado] = colores
       const canvas = document.createElement('canvas')
-      canvas.width = 900
-      canvas.height = 1320
+      canvas.width = 1200
+      canvas.height = 1760
       const ctx = canvas.getContext('2d')
       if (!ctx) throw new Error('No se pudo crear la tarjeta.')
+      // Escala el diseño completo a mayor resolución real, manteniendo proporciones.
+      ctx.scale(4 / 3, 4 / 3)
       ctx.fillStyle = oscuro
       ctx.fillRect(0, 0, 900, 1320)
       const fondo = ctx.createLinearGradient(0, 0, 900, 950)
@@ -51,9 +53,18 @@ export default function DescargarTarjeta({ jugador, equipo, colores }) {
       ctx.fillRect(0, 950, 900, 370)
       ctx.fillStyle = dorado
       ctx.fillRect(0, 946, 900, 6)
+      // Recuadro de número igual al de las tarjetas públicas.
+      ctx.fillStyle = oscuro
+      ctx.fillRect(36, 36, 145, 105)
+      ctx.strokeStyle = dorado
+      ctx.lineWidth = 6
+      ctx.strokeRect(39, 39, 139, 99)
       ctx.fillStyle = dorado
-      ctx.font = 'bold 42px Arial, sans-serif'
-      ctx.fillText(String(jugador.numero ?? '—'), 50, 85)
+      ctx.textAlign = 'center'
+      ctx.textBaseline = 'middle'
+      ctx.font = 'bold 55px Arial, sans-serif'
+      ctx.fillText(String(jugador.numero ?? '—'), 109, 91, 125)
+      ctx.textBaseline = 'alphabetic'
       ctx.textAlign = 'center'
       ctx.font = 'bold 25px Arial, sans-serif'
       ctx.fillText('YSASL · JUGADOR', 450, 1030)
