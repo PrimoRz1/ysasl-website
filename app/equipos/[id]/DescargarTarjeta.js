@@ -21,19 +21,19 @@ export default function DescargarTarjeta({ jugador, equipo, colores }) {
     try {
       const [primario, oscuro, dorado] = colores
       const canvas = document.createElement('canvas')
-      canvas.width = 1500
-      canvas.height = 2100
+      canvas.width = 1200
+      canvas.height = 1600
       const ctx = canvas.getContext('2d')
       if (!ctx) throw new Error('No se pudo crear la tarjeta.')
       // Escala el diseño completo a mayor resolución real, manteniendo proporciones.
-      ctx.scale(5 / 3, 5 / 3)
+      ctx.scale(4 / 3, 4 / 3)
       ctx.fillStyle = oscuro
-      ctx.fillRect(0, 0, 900, 1260)
-      const fondo = ctx.createLinearGradient(0, 0, 900, 900)
+      ctx.fillRect(0, 0, 900, 1200)
+      const fondo = ctx.createLinearGradient(0, 0, 900, 850)
       fondo.addColorStop(0, primario)
       fondo.addColorStop(1, oscuro)
       ctx.fillStyle = fondo
-      ctx.fillRect(0, 0, 900, 900)
+      ctx.fillRect(0, 0, 900, 850)
       const escudo = equipo.escudo_url ? await cargarImagen(equipo.escudo_url) : null
       if (escudo) {
         ctx.save()
@@ -47,12 +47,12 @@ export default function DescargarTarjeta({ jugador, equipo, colores }) {
         const escala = Math.min(900 / foto.width, 900 / foto.height)
         const ancho = foto.width * escala
         const alto = foto.height * escala
-        ctx.drawImage(foto, (900 - ancho) / 2, 900 - alto, ancho, alto)
+        ctx.drawImage(foto, (900 - ancho) / 2, 850 - alto, ancho, alto)
       }
       ctx.fillStyle = oscuro
-      ctx.fillRect(0, 900, 900, 360)
+      ctx.fillRect(0, 900, 850, 360)
       ctx.fillStyle = dorado
-      ctx.fillRect(0, 896, 900, 6)
+      ctx.fillRect(0, 846, 900, 6)
       // Recuadro de número igual al de las tarjetas públicas.
       ctx.fillStyle = oscuro
       ctx.fillRect(36, 36, 145, 105)
@@ -67,7 +67,7 @@ export default function DescargarTarjeta({ jugador, equipo, colores }) {
       ctx.textBaseline = 'alphabetic'
       ctx.textAlign = 'center'
       ctx.font = 'bold 25px Arial, sans-serif'
-      ctx.fillText('YSASL · JUGADOR', 450, 990)
+      ctx.fillText('YSASL · JUGADOR', 450, 930)
       ctx.fillStyle = '#ffffff'
       const nombre = String(jugador.nombre || 'JUGADOR').toLocaleUpperCase('es')
       let fontSize = 49
@@ -76,17 +76,17 @@ export default function DescargarTarjeta({ jugador, equipo, colores }) {
         if (ctx.measureText(nombre).width <= 820) break
         fontSize -= 2
       } while (fontSize > 22)
-      ctx.fillText(nombre, 450, 1090)
+      ctx.fillText(nombre, 450, 1030)
       ctx.font = 'bold 30px Arial, sans-serif'
-      ctx.fillText(String(equipo.nombre || '').toLocaleUpperCase('es'), 450, 1190, 820)
+      ctx.fillText(String(equipo.nombre || '').toLocaleUpperCase('es'), 450, 1120, 820)
       if (escudo) {
         ctx.fillStyle = '#ffffff'
-        ctx.fillRect(735, 735, 125, 125)
-        ctx.drawImage(escudo, 746, 746, 103, 103)
+        ctx.fillRect(735, 685, 125, 125)
+        ctx.drawImage(escudo, 746, 696, 103, 103)
       }
       ctx.strokeStyle = dorado
       ctx.lineWidth = 9
-      ctx.strokeRect(5, 5, 890, 1250)
+      ctx.strokeRect(5, 5, 890, 1190)
       const blob = await new Promise(resolve => canvas.toBlob(resolve, 'image/png'))
       if (!blob) throw new Error('No se pudo generar el PNG.')
       const url = URL.createObjectURL(blob)
