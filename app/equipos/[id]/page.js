@@ -128,6 +128,7 @@ export default async function EquipoPage({ params }) {
             gap: 22, alignItems: 'start',
           }}>
             {jugadores.map((jugador) => (
+              <div key={jugador.id}>
               <Link key={jugador.id} href={`/jugadores/${jugador.id}`}
                 aria-label={`Ver ficha de ${jugador.nombre}`}
                 style={{ display: 'block', textDecoration: 'none', color: 'inherit' }}>
@@ -156,10 +157,8 @@ export default async function EquipoPage({ params }) {
                         style={{
                           position: 'absolute', inset: 0,
                           width: '100%', height: '100%',
-                          objectFit: 'cover', objectPosition: '55% 22%',
-                          transform: Number(jugador.id) === 28
-  ? 'translateY(16px) scale(1)'
-  : 'translateY(-12px) scale(1.05)',
+                          objectFit: 'contain', objectPosition: 'center bottom',
+                           transform: 'none',
                           transformOrigin: 'center center',
                         }} />
                     ) : (
@@ -241,6 +240,7 @@ export default async function EquipoPage({ params }) {
                 </article>
               </Link>
               <DescargarTarjeta jugador={{ nombre: jugador.nombre, numero: jugador.numero, foto: jugador.foto_url || jugador.foto_uniforme_url }} equipo={{ nombre: equipo.nombre, escudo_url: equipo.escudo_url }} colores={[primario, oscuro, dorado]} />
+              </div>
             ))}
           </div>
         )}
