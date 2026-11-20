@@ -124,7 +124,7 @@ export default async function EquipoPage({ params }) {
         {!errorJugadores && jugadores && jugadores.length > 0 && (
           <div style={{
             display: 'grid',
-            gridTemplateColumns: 'repeat(auto-fill, minmax(min(100%, 220px), 1fr))',
+            gridTemplateColumns: 'repeat(auto-fill, minmax(min(100%, 180px), 180px))',
             gap: 22, alignItems: 'start',
           }}>
             {jugadores.map((jugador) => (
