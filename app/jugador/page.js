@@ -20,8 +20,25 @@ export default function JugadorPage() {
   const [subiendoFoto, setSubiendoFoto] = useState(false)
   const [mensajeFoto, setMensajeFoto] = useState('')
   const [errorFoto, setErrorFoto] = useState('')
-  const [quitarFondo, setQuitarFondo] = useState(false)
-  const [quitarFondoDisponible, setQuitarFondoDisponible] = useState(false)
+  const [fotoPendiente, setFotoPendiente] = useState(null)
+  const [recortePendiente, setRecortePendiente] = useState(null)
+  const [procesandoFoto, setProcesandoFoto] = useState(false)
+  const [progresoFoto, setProgresoFoto] = useState('')
+  const [vistaOriginal, setVistaOriginal] = useState('')
+  const [vistaRecorte, setVistaRecorte] = useState('')
+
+  useEffect(() => {
+    if (!fotoPendiente) { setVistaOriginal(''); return }
+    const url = URL.createObjectURL(fotoPendiente)
+    setVistaOriginal(url)
+    return () => URL.revokeObjectURL(url)
+  }, [fotoPendiente])
+  useEffect(() => {
+    if (!recortePendiente) { setVistaRecorte(''); return }
+    const url = URL.createObjectURL(recortePendiente)
+    setVistaRecorte(url)
+    return () => URL.revokeObjectURL(url)
+  }, [recortePendiente])
   const [equipos, setEquipos] = useState([])
   const [solicitudes, setSolicitudes] = useState([])
   const [equipoId, setEquipoId] = useState('')
@@ -61,52 +78,6 @@ export default function JugadorPage() {
     equipoId !== '' && Number(s.equipo_id) === Number(equipoId) &&
     ['pendiente', 'aprobada'].includes(s.estado)
   )
-
-  // PILOTO LEONARDO: consultar disponibilidad con la sesión real.
-  // La API privada autoriza solamente a la cuenta vinculada a la ficha #28.
-  // No se procesa ni cobra ninguna fotografía al hacer esta consulta.
-  useEffect(() => {
-    let activo = true
-
-    async function comprobarQuitarFondo() {
-      if (!usuario?.id) {
-        setQuitarFondoDisponible(false)
-        setQuitarFondo(false)
-        return
-      }
-
-      try {
-        const { data: sesion, error: errorSesion } =
-          await supabase.auth.getSession()
-        if (errorSesion || !sesion?.session?.access_token) {
-          throw new Error('No hay sesión activa.')
-        }
-
-        const respuesta = await fetch('/api/quitar-fondo', {
-          cache: 'no-store',
-          headers: {
-            Authorization: `Bearer ${sesion.session.access_token}`
-          }
-        })
-        const datos = respuesta.ok
-          ? await respuesta.json()
-          : { disponible: false }
-        if (!activo) return
-
-        const disponible = datos?.disponible === true
-        setQuitarFondoDisponible(disponible)
-        // El jugador autorizado puede desmarcar el procesamiento.
-        setQuitarFondo(disponible)
-      } catch {
-        if (!activo) return
-        setQuitarFondoDisponible(false)
-        setQuitarFondo(false)
-      }
-    }
-
-    comprobarQuitarFondo()
-    return () => { activo = false }
-  }, [usuario?.id])
 
   useEffect(() => {
     let activo = true
@@ -584,7 +555,7 @@ export default function JugadorPage() {
     }
   }
 
-  async function subirMiFoto(e) {
+  function seleccionarMiFoto(e) {
     const archivo = e.target.files?.[0]
     e.target.value = ''
     if (!archivo || !usuario || !jugadorVinculado || subiendoFoto) return
@@ -606,6 +577,36 @@ export default function JugadorPage() {
       return
     }
 
+    setFotoPendiente(archivo)
+    setRecortePendiente(null)
+    setProgresoFoto('')
+  }
+
+  async function prepararRecorte() {
+    if (!fotoPendiente || procesandoFoto || subiendoFoto) return
+    setProcesandoFoto(true)
+    setErrorFoto('')
+    setProgresoFoto('Preparando herramienta gratuita…')
+    try {
+      const { quitarFondoLocal } = await import(/* webpackIgnore: true */ '/modnet-browser.js')
+      const png = await quitarFondoLocal(fotoPendiente, setProgresoFoto)
+      setRecortePendiente(png)
+      setProgresoFoto('Recorte listo. Revísalo antes de guardarlo.')
+    } catch (err) {
+      setErrorFoto('No se pudo quitar el fondo. Puedes conservar la original o intentar nuevamente. ' + (err.message || ''))
+      setProgresoFoto('')
+    } finally {
+      setProcesandoFoto(false)
+    }
+  }
+
+  async function subirMiFoto(usarRecorte) {
+    const archivo = fotoPendiente
+    if (!archivo || !usuario || !jugadorVinculado || subiendoFoto || procesandoFoto) return
+    if (usarRecorte && !recortePendiente) return
+    const extension = { 'image/jpeg': 'jpg', 'image/png': 'png', 'image/webp': 'webp' }[archivo.type]
+    setErrorFoto('')
+    setMensajeFoto('')
     setSubiendoFoto(true)
     const rutasNuevas = []
     try {
@@ -623,51 +624,15 @@ export default function JugadorPage() {
       if (!original?.publicUrl) throw new Error('No se pudo obtener la URL original.')
 
       let fotoPublica = original.publicUrl
-      let aviso = ''
-
-      if (quitarFondo && quitarFondoDisponible) {
-        let rutaProcesada = null
-        try {
-          const { data: sesion, error: errorSesion } = await supabase.auth.getSession()
-          if (errorSesion || !sesion?.session?.access_token) {
-            throw new Error('La sesión expiró. Inicia sesión nuevamente.')
-          }
-
-          const formulario = new FormData()
-          formulario.append('archivo', archivo, archivo.name)
-          const respuesta = await fetch('/api/quitar-fondo', {
-            method: 'POST',
-            headers: { Authorization: `Bearer ${sesion.session.access_token}` },
-            body: formulario
-          })
-          if (!respuesta.ok) {
-            const datos = await respuesta.json().catch(() => ({}))
-            throw new Error(datos.error || 'El servicio no pudo procesar la foto.')
-          }
-
-          const png = await respuesta.blob()
-          if (!png.size || png.size > 5 * 1024 * 1024) {
-            throw new Error('La imagen procesada es demasiado grande.')
-          }
-          rutaProcesada = `${usuario.id}/${identificador}-sin-fondo.png`
-          const { error: errorPNG } = await supabase.storage
-            .from('fotos-jugadores')
-            .upload(rutaProcesada, png, { contentType: 'image/png', upsert: false })
-          if (errorPNG) throw errorPNG
-
-          const { data: procesada } = supabase.storage
-            .from('fotos-jugadores').getPublicUrl(rutaProcesada)
-          if (!procesada?.publicUrl) throw new Error('No se obtuvo la URL procesada.')
-          rutasNuevas.push(rutaProcesada)
-          fotoPublica = procesada.publicUrl
-        } catch (errorProcesado) {
-          // No perder la foto si falla el servicio externo.
-          if (rutaProcesada) {
-            await supabase.storage.from('fotos-jugadores').remove([rutaProcesada])
-          }
-          aviso = ' Se guardó la foto original, pero no se pudo quitar el fondo: ' +
-            (errorProcesado.message || 'error desconocido')
-        }
+      if (usarRecorte) {
+        const ruta = `${usuario.id}/${identificador}-sin-fondo.png`
+        const { error: errorPNG } = await supabase.storage.from('fotos-jugadores')
+          .upload(ruta, recortePendiente, { contentType: 'image/png', upsert: false })
+        if (errorPNG) throw errorPNG
+        rutasNuevas.push(ruta)
+        const { data: procesada } = supabase.storage.from('fotos-jugadores').getPublicUrl(ruta)
+        if (!procesada?.publicUrl) throw new Error('No se obtuvo la URL del recorte.')
+        fotoPublica = procesada.publicUrl
       }
 
       // Mantenemos la RPC oficial, que vincula la foto al jugador autorizado.
@@ -678,11 +643,11 @@ export default function JugadorPage() {
       if (errorVincular) throw errorVincular
 
       setFotoJugador(fotoPublica)
-      setMensajeFoto(aviso
-        ? '¡Fotografía actualizada!' + aviso
-        : quitarFondo && quitarFondoDisponible
-          ? '¡Fotografía sin fondo actualizada! Conservamos la original.'
-          : '¡Fotografía actualizada correctamente!')
+      setMensajeFoto(usarRecorte
+        ? '¡Fotografía sin fondo actualizada! Conservamos la original.'
+        : '¡Fotografía original actualizada!')
+      setFotoPendiente(null)
+      setRecortePendiente(null)
     } catch (err) {
       // Solo limpiamos los archivos de este intento si no se pudo vincular.
       if (rutasNuevas.length) {
@@ -802,32 +767,7 @@ height={320}
             <p style={{ color: '#475569' }}>
               Esta fotografía será pública en tu ficha y podrá aparecer en Líderes de Goleo.
             </p>
-            {quitarFondoDisponible ? (
-              <label style={{ display: 'flex', alignItems: 'flex-start', gap: '8px', marginBottom: '12px' }}>
-                <input
-                  type="checkbox"
-                  checked={quitarFondo}
-                  onChange={e => setQuitarFondo(e.target.checked)}
-                  disabled={subiendoFoto}
-                  style={{ marginTop: '3px' }}
-                />
-                <span>
-                  <strong>Quitar el fondo automáticamente</strong>
-                  <small style={{ display: 'block', color: '#475569' }}>
-                    Cuando esté marcada, enviaremos la fotografía a Leonardo.Ai
-                    para quitarle el fondo. Puedes desmarcarla si prefieres la
-                    foto original. YSASL cubrirá hasta dos procesamientos por
-                    jugador y temporada, sujetos al presupuesto disponible.
-                    Conservaremos la fotografía original en YSASL.
-                  </small>
-                </span>
-              </label>
-            ) : (
-              <p style={{ fontSize: '13px', color: '#64748b' }}>
-                El quitafondos automático estará disponible cuando se configure el servicio.
-                Por ahora puedes seguir subiendo fotos normalmente.
-              </p>
-            )}
+            <p>Quita el fondo gratis y revisa el resultado antes de guardar. La primera descarga puede tardar; la fotografía se procesa en tu dispositivo.</p>
             <label htmlFor="foto-jugador" style={{ display: 'block', marginBottom: '8px', fontWeight: 'bold' }}>
               {fotoJugador ? 'Cambiar mi fotografía' : 'Subir mi fotografía'}
             </label>
@@ -835,10 +775,34 @@ height={320}
               id="foto-jugador"
               type="file"
               accept="image/jpeg,image/png,image/webp"
-              onChange={subirMiFoto}
-              disabled={subiendoFoto}
+              onChange={seleccionarMiFoto}
+              disabled={subiendoFoto || procesandoFoto}
             />
             <p style={{ fontSize: '13px', color: '#64748b' }}>JPG, PNG o WebP. Máximo 2 MB.</p>
+            {fotoPendiente && (
+              <div style={{ border: '1px solid #cbd5e1', borderRadius: 10, padding: 16, marginTop: 16 }}>
+                <div style={{ display: 'flex', flexWrap: 'wrap', gap: 16 }}>
+                  <div style={{ flex: '1 1 200px' }}>
+                    <strong>Original</strong>
+                    {vistaOriginal && <img src={vistaOriginal} alt="Vista previa original" style={{ width: '100%', height: 260, objectFit: 'contain' }} />}
+                  </div>
+                  {vistaRecorte && <div style={{ flex: '1 1 200px', background: '#dce9e1' }}>
+                    <strong>Sin fondo</strong>
+                    <img src={vistaRecorte} alt="Vista previa sin fondo" style={{ width: '100%', height: 260, objectFit: 'contain' }} />
+                  </div>}
+                </div>
+                <p>Selecciona la versión que quieres publicar. Tu foto actual cambia al guardar.</p>
+                <div style={{ display: 'flex', flexWrap: 'wrap', gap: 12 }}>
+                  <button type="button" onClick={prepararRecorte} disabled={procesandoFoto || subiendoFoto}>
+                    {procesandoFoto ? 'Quitando fondo…' : 'Quitar fondo gratis'}
+                  </button>
+                  {recortePendiente && <button type="button" onClick={() => subirMiFoto(true)} disabled={procesandoFoto || subiendoFoto}>Aceptar recorte y guardar</button>}
+                  <button type="button" onClick={() => subirMiFoto(false)} disabled={procesandoFoto || subiendoFoto}>Guardar original</button>
+                  <button type="button" onClick={() => { setFotoPendiente(null); setRecortePendiente(null); setProgresoFoto(''); setErrorFoto('') }} disabled={procesandoFoto || subiendoFoto}>Cancelar</button>
+                </div>
+                {progresoFoto && <p role="status" aria-live="polite">{progresoFoto}</p>}
+              </div>
+            )}
             {subiendoFoto && <p role="status">Guardando y preparando fotografía...</p>}
             {mensajeFoto && <p role="status" style={{ color: '#166534' }}>{mensajeFoto}</p>}
             {errorFoto && <p role="alert" style={{ color: '#b91c1c' }}>{errorFoto}</p>}
