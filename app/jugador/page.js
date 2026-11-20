@@ -17,6 +17,8 @@ export default function JugadorPage() {
   const [usuario, setUsuario] = useState(null)
   const [jugadorVinculado, setJugadorVinculado] = useState(null)
   const [fotoJugador, setFotoJugador] = useState('')
+  const [fichaJugador, setFichaJugador] = useState(null)
+  const [escudoEquipo, setEscudoEquipo] = useState('')
   const [subiendoFoto, setSubiendoFoto] = useState(false)
   const [mensajeFoto, setMensajeFoto] = useState('')
   const [errorFoto, setErrorFoto] = useState('')
@@ -71,6 +73,10 @@ export default function JugadorPage() {
   const solicitudAprobada = solicitudes.find(s =>
     s.estado === 'aprobada' && s.jugador_id != null
   )
+  const solicitudPendiente = solicitudes.find(s => s.estado === 'pendiente')
+  const equipoPendiente = solicitudPendiente
+    ? equipos.find(e => Number(e.id) === Number(solicitudPendiente.equipo_id))
+    : null
   const equipoActual = solicitudAprobada
     ? equipos.find(e => Number(e.id) === Number(solicitudAprobada.equipo_id))
     : null
@@ -106,7 +112,7 @@ export default function JugadorPage() {
           await Promise.all([
             supabase
               .from('equipos')
-              .select('id, nombre')
+              .select('id, nombre, escudo_url')
               .eq('activo', true)
               .order('nombre'),
             supabase
@@ -173,7 +179,7 @@ export default function JugadorPage() {
         if (aprobada) {
           const { data: ficha, error: errorFicha } = await supabase
             .from('jugadores')
-            .select('id, foto_url')
+            .select('id, nombre, numero, foto_url, foto_uniforme_url')
             .eq('id', aprobada.jugador_id)
             .maybeSingle()
           if (!activo) return
@@ -181,6 +187,8 @@ export default function JugadorPage() {
             setErrorFoto('No se pudo cargar tu fotografía: ' + errorFicha.message)
           } else if (ficha) {
             setJugadorVinculado(ficha.id)
+            setFichaJugador(ficha)
+            setEscudoEquipo(listaEquipos.find(e => Number(e.id) === Number(aprobada.equipo_id))?.escudo_url || '')
             setFotoJugador(ficha.foto_url || '')
           }
         }
@@ -791,6 +799,78 @@ height={320}
                     <img src={vistaRecorte} alt="Vista previa sin fondo" style={{ width: '100%', height: 260, objectFit: 'contain' }} />
                   </div>}
                 </div>
+
+                <div style={{ margin: '22px 0', display: 'flex', flexDirection: 'column', alignItems: 'center', gap: 8 }}>
+                  <strong>Así se verá tu tarjeta oficial</strong>
+                  <p style={{ margin: 0, color: '#475569', fontSize: 13, textAlign: 'center' }}>
+                    Vista previa solamente. Tu fotografía pública no cambiará hasta que guardes.
+                  </p>
+                  {(() => {
+                    const equipo = equipoActual
+                    const paletas = [
+                      ['#102a43', '#0a192c', '#e1bd6a'],
+                      ['#12453b', '#092c26', '#e4c777'],
+                      ['#632c3b', '#361923', '#e5bd72'],
+                      ['#193d70', '#0c2342', '#e4c47c'],
+                      ['#554020', '#302514', '#f0cf83'],
+                      ['#40345d', '#241d3b', '#e1c28c'],
+                    ]
+                    const indice = Number(equipo?.id || 0) % paletas.length
+                    const [primario, oscuro, dorado] = equipo?.nombre?.trim().toLocaleUpperCase('es') === 'LA VALLARTA FC'
+                      ? ['#07543f', '#002c24', '#e8c46a']
+                      : paletas[indice]
+                    const imagen = vistaRecorte || vistaOriginal
+                    return (
+                      <article aria-label="Vista previa de tarjeta oficial" style={{
+                        width: '100%', maxWidth: 245, overflow: 'hidden',
+                        border: `2px solid ${dorado}`, borderRadius: 21,
+                        background: oscuro, color: '#fff',
+                        boxShadow: '0 12px 28px rgba(9,26,45,.22)',
+                      }}>
+                        <div style={{ position: 'relative', height: 310, overflow: 'hidden',
+                          background: `linear-gradient(155deg, ${primario} 8%, ${oscuro} 88%)` }}>
+                          {escudoEquipo && <img src={escudoEquipo} alt="" aria-hidden="true"
+                            style={{ position: 'absolute', width: 205, height: 205, objectFit: 'contain',
+                              opacity: 0.12, top: 27, right: -37 }} />}
+                          {imagen && <img src={imagen} alt="Fotografía en la tarjeta"
+                            style={{ position: 'absolute', inset: 0, width: '100%', height: '100%',
+                              objectFit: 'cover', objectPosition: '55% 22%',
+                              transform: Number(fichaJugador?.id) === 28
+                                ? 'translateY(16px) scale(1)' : 'translateY(-12px) scale(1.05)',
+                              transformOrigin: 'center center' }} />}
+                          <div style={{ position: 'absolute', top: 13, left: 13, borderRadius: 11,
+                            background: oscuro, border: `2px solid ${dorado}`, color: dorado,
+                            padding: '8px 12px', fontWeight: 900, fontSize: 25, lineHeight: 1 }}>
+                            {fichaJugador?.numero ?? '—'}
+                          </div>
+                          {escudoEquipo && Number(fichaJugador?.id) !== 28 && (
+                            <div style={{ position: 'absolute', right: 11, bottom: 11,
+                              width: 61, height: 61, background: '#fffffff2', borderRadius: 13,
+                              padding: 6, display: 'grid', placeItems: 'center' }}>
+                              <img src={escudoEquipo} alt="" aria-hidden="true"
+                                style={{ width: '100%', height: '100%', objectFit: 'contain' }} />
+                            </div>
+                          )}
+                        </div>
+                        <div style={{ height: 4, background: `linear-gradient(90deg, ${dorado}, #fff4b6, ${dorado})` }} />
+                        <div style={{ padding: '18px 12px 20px', textAlign: 'center' }}>
+                          <p style={{ margin: '0 0 9px', color: dorado, fontSize: 11,
+                            fontWeight: 800, letterSpacing: 2 }}>YSASL · JUGADOR</p>
+                          <h3 style={{ margin: '0 0 14px', fontSize: 19, fontWeight: 900,
+                            textTransform: 'uppercase', lineHeight: 1.2, overflowWrap: 'anywhere' }}>
+                            {fichaJugador?.nombre || 'JUGADOR'}
+                          </h3>
+                          <div style={{ padding: '8px 12px', borderRadius: 25,
+                            border: '1px solid #ffffff33', background: '#ffffff12',
+                            fontSize: 12, fontWeight: 800 }}>{equipo?.nombre || 'MI EQUIPO'}</div>
+                        </div>
+                      </article>
+                    )
+                  })()}
+                  <span style={{ fontSize: 12, color: '#475569' }}>
+                    {vistaRecorte ? 'Mostrando la versión sin fondo.' : 'Mostrando la versión original.'}
+                  </span>
+                </div>
                 <p>Selecciona la versión que quieres publicar. Tu foto actual cambia al guardar.</p>
                 <div style={{ display: 'flex', flexWrap: 'wrap', gap: 12 }}>
                   <button type="button" onClick={prepararRecorte} disabled={procesandoFoto || subiendoFoto}>
@@ -808,10 +888,111 @@ height={320}
             {errorFoto && <p role="alert" style={{ color: '#b91c1c' }}>{errorFoto}</p>}
           </>
         ) : (
-          <p>
-            Podrás subir tu fotografía oficial cuando el delegado apruebe tu solicitud
-            y tu cuenta esté vinculada a un jugador de la plantilla.
-          </p>
+          <>
+            <p>Podrás publicar tu fotografía oficial cuando el delegado apruebe tu solicitud y tu cuenta esté vinculada a la plantilla.</p>
+            {equipoPendiente ? (
+              <div style={{ border: '1px solid #d6b65d', borderRadius: 12, padding: 16, background: '#fffdf3' }}>
+                <strong>Tu tarjeta de muestra — pendiente de aprobación</strong>
+                <p style={{ fontSize: 13, color: '#475569' }}>
+                  Puedes probar tu fotografía aquí sin publicarla ni agregarla a la plantilla oficial.
+                </p>
+                <label htmlFor="foto-muestra" style={{ display: 'block', fontWeight: 700, marginBottom: 8 }}>
+                  Elegir fotografía para la muestra
+                </label>
+                <input id="foto-muestra" type="file" accept="image/jpeg,image/png,image/webp"
+                  disabled={procesandoFoto}
+                  onChange={e => {
+                    const archivo = e.target.files?.[0]
+                    e.target.value = ''
+                    if (!archivo) return
+                    if (!['image/jpeg', 'image/png', 'image/webp'].includes(archivo.type) || archivo.size === 0 || archivo.size > 2 * 1024 * 1024) {
+                      setErrorFoto('Selecciona una imagen JPG, PNG o WebP de máximo 2 MB.')
+                      return
+                    }
+                    setErrorFoto('')
+                    setFotoPendiente(archivo)
+                    setRecortePendiente(null)
+                    setProgresoFoto('')
+                  }} />
+                {fotoPendiente && (
+                  <>
+                    <div style={{ display: 'flex', flexWrap: 'wrap', gap: 12, marginTop: 12 }}>
+                      {vistaOriginal && <img src={vistaOriginal} alt="Fotografía original de muestra"
+                        style={{ width: 170, height: 160, objectFit: 'contain' }} />}
+                      {vistaRecorte && <img src={vistaRecorte} alt="Fotografía sin fondo de muestra"
+                        style={{ width: 170, height: 160, objectFit: 'contain', background: '#dce9e1' }} />}
+                    </div>
+                    <button type="button" onClick={prepararRecorte} disabled={procesandoFoto}
+                      style={{ marginTop: 10 }}>{procesandoFoto ? 'Quitando fondo…' : 'Quitar fondo gratis'}</button>
+                    <button type="button" onClick={() => { setFotoPendiente(null); setRecortePendiente(null); setErrorFoto(''); setProgresoFoto('') }}
+                      disabled={procesandoFoto} style={{ marginLeft: 10 }}>Descartar muestra</button>
+                    {progresoFoto && <p role="status">{progresoFoto}</p>}
+                  </>
+                )}
+                {(() => {
+                  const paletas = [
+                    ['#102a43', '#0a192c', '#e1bd6a'], ['#12453b', '#092c26', '#e4c777'],
+                    ['#632c3b', '#361923', '#e5bd72'], ['#193d70', '#0c2342', '#e4c47c'],
+                    ['#554020', '#302514', '#f0cf83'], ['#40345d', '#241d3b', '#e1c28c']
+                  ]
+                  const [primario, oscuro, dorado] = equipoPendiente.nombre?.trim().toLocaleUpperCase('es') === 'LA VALLARTA FC'
+                    ? ['#07543f', '#002c24', '#e8c46a']
+                    : paletas[Number(equipoPendiente.id) % paletas.length]
+                  const imagen = vistaRecorte || vistaOriginal
+                  return (
+                    <article aria-label="Tarjeta de muestra pendiente de aprobación" style={{
+                      width: '100%', maxWidth: 245, margin: '20px auto 0', border: `2px solid ${dorado}`,
+                      borderRadius: 21, overflow: 'hidden', background: oscuro, color: 'white',
+                      boxShadow: '0 12px 28px rgba(9,26,45,.22)'
+                    }}>
+                      <div style={{ position: 'relative', height: 310, overflow: 'hidden',
+                        background: `linear-gradient(155deg, ${primario} 8%, ${oscuro} 88%)` }}>
+                        {equipoPendiente.escudo_url && <img src={equipoPendiente.escudo_url}
+                          alt="" aria-hidden="true" style={{ position: 'absolute', width: 205, height: 205,
+                            objectFit: 'contain', opacity: 0.12, top: 27, right: -37 }} />}
+                        {imagen ? <img src={imagen} alt="Fotografía en tarjeta de muestra"
+                          style={{ position: 'absolute', inset: 0, width: '100%', height: '100%',
+                            objectFit: 'cover', objectPosition: '55% 22%',
+                            transform: 'translateY(-12px) scale(1.05)' }} /> :
+                          <div style={{ height: '100%', display: 'grid', placeItems: 'center',
+                            color: '#ffffffbb' }}>Tu fotografía aquí</div>}
+                        <div style={{ position: 'absolute', top: 13, left: 13, borderRadius: 11,
+                          background: oscuro, border: `2px solid ${dorado}`, color: dorado,
+                          padding: '8px 12px', fontWeight: 900, fontSize: 25 }}>—</div>
+                        {equipoPendiente.escudo_url && <div style={{
+                          position: 'absolute', right: 11, bottom: 11, width: 61, height: 61,
+                          background: '#fffffff2', borderRadius: 13, padding: 6,
+                          display: 'grid', placeItems: 'center'
+                        }}><img src={equipoPendiente.escudo_url} alt="" aria-hidden="true"
+                          style={{ width: '100%', height: '100%', objectFit: 'contain' }} /></div>}
+                      </div>
+                      <div style={{ height: 4, background: `linear-gradient(90deg, ${dorado}, #fff4b6, ${dorado})` }} />
+                      <div style={{ padding: '18px 12px 20px', textAlign: 'center' }}>
+                        <p style={{ color: dorado, fontWeight: 800, fontSize: 11, letterSpacing: 2 }}>YSASL · JUGADOR</p>
+                        <h3 style={{ fontSize: 19, fontWeight: 900, textTransform: 'uppercase', overflowWrap: 'anywhere' }}>
+                          {nombre || usuario?.user_metadata?.nombre || 'JUGADOR'}
+                        </h3>
+                        <div style={{ border: '1px solid #ffffff33', background: '#ffffff12',
+                          padding: 8, borderRadius: 25, fontSize: 12, fontWeight: 800 }}>
+                          {equipoPendiente.nombre}
+                        </div>
+                        <p style={{ color: dorado, fontSize: 12, fontWeight: 900, marginBottom: 0 }}>
+                          VISTA PREVIA — PENDIENTE DE APROBACIÓN
+                        </p>
+                      </div>
+                    </article>
+                  )
+                })()}
+                <p style={{ fontSize: 12, color: '#475569' }}>
+                  La muestra solo existe en esta pantalla. No se guarda ni se publica.
+                  Cuando seas aprobado, podrás subir tu fotografía oficial.
+                </p>
+              </div>
+            ) : (
+              <p>Cuando solicites ingresar a un equipo podrás ver aquí una tarjeta de muestra.</p>
+            )}
+            {errorFoto && <p role="alert" style={{ color: '#b91c1c' }}>{errorFoto}</p>}
+          </>
         )}
       </section>
 
