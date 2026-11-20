@@ -26,7 +26,7 @@ async function optimizarFotografia(archivo) {
 
   const bitmap = await createImageBitmap(archivo, { imageOrientation: 'from-image' })
   try {
-    for (const maxDimension of [2000, 1600, 1200, 900, 700]) {
+    for (const maxDimension of [4000, 3200, 2600, 2000, 1600, 1200, 900, 700]) {
       const escala = Math.min(1, maxDimension / Math.max(bitmap.width, bitmap.height))
       const canvas = document.createElement('canvas')
       canvas.width = Math.max(1, Math.round(bitmap.width * escala))
@@ -36,7 +36,7 @@ async function optimizarFotografia(archivo) {
       contexto.fillStyle = '#ffffff'
       contexto.fillRect(0, 0, canvas.width, canvas.height)
       contexto.drawImage(bitmap, 0, 0, canvas.width, canvas.height)
-      for (const calidad of [0.88, 0.78, 0.65, 0.5]) {
+      for (const calidad of [0.95, 0.9, 0.85, 0.78, 0.65, 0.5]) {
         const blob = await new Promise(resolve => canvas.toBlob(resolve, 'image/jpeg', calidad))
         if (blob && blob.size <= LIMITE_FOTO_SUBIDA) {
           return new File([blob], archivo.name.replace(/\.[^.]+$/, '') + '-optimizada.jpg',
@@ -62,6 +62,7 @@ export default function JugadorPage() {
   const [mensajeFoto, setMensajeFoto] = useState('')
   const [errorFoto, setErrorFoto] = useState('')
   const [fotoPendiente, setFotoPendiente] = useState(null)
+  const [tamanoOriginalFoto, setTamanoOriginalFoto] = useState(null)
   const [optimizandoFoto, setOptimizandoFoto] = useState(false)
   const [recortePendiente, setRecortePendiente] = useState(null)
   const [procesandoFoto, setProcesandoFoto] = useState(false)
@@ -625,6 +626,7 @@ export default function JugadorPage() {
     try {
       const optimizada = await optimizarFotografia(archivo)
       setFotoPendiente(optimizada)
+      setTamanoOriginalFoto(archivo.size)
       setRecortePendiente(null)
       setProgresoFoto(optimizada.size < archivo.size ? 'Fotografía optimizada y lista para revisar.' : '')
     } catch (err) {
@@ -700,6 +702,7 @@ export default function JugadorPage() {
         ? '¡Fotografía sin fondo actualizada! Conservamos la original.'
         : '¡Fotografía original actualizada!')
       setFotoPendiente(null)
+      setTamanoOriginalFoto(null)
       setRecortePendiente(null)
     } catch (err) {
       // Solo limpiamos los archivos de este intento si no se pudo vincular.
@@ -835,6 +838,7 @@ height={320}
             {optimizandoFoto && <p role="status">Optimizando fotografía…</p>}
             {fotoPendiente && (
               <div style={{ border: '1px solid #cbd5e1', borderRadius: 10, padding: 16, marginTop: 16 }}>
+                <p style={{ fontSize: 13, color: '#334155' }}>Tamaño original: {tamanoOriginalFoto == null ? '—' : (tamanoOriginalFoto / 1048576).toFixed(2) + ' MB'} · Tamaño preparado: {(fotoPendiente.size / 1048576).toFixed(2)} MB{recortePendiente ? ' · Sin fondo: ' + (recortePendiente.size / 1048576).toFixed(2) + ' MB' : ''}</p>
                 <div style={{ display: 'flex', flexWrap: 'wrap', gap: 16 }}>
                   <div style={{ flex: '1 1 200px' }}>
                     <strong>Original</strong>
@@ -924,7 +928,7 @@ height={320}
                   </button>
                   {recortePendiente && <button type="button" onClick={() => subirMiFoto(true)} disabled={procesandoFoto || subiendoFoto}>Aceptar recorte y guardar</button>}
                   <button type="button" onClick={() => subirMiFoto(false)} disabled={procesandoFoto || subiendoFoto}>Guardar original</button>
-                  <button type="button" onClick={() => { setFotoPendiente(null); setRecortePendiente(null); setProgresoFoto(''); setErrorFoto('') }} disabled={procesandoFoto || subiendoFoto}>Cancelar</button>
+                  <button type="button" onClick={() => { setFotoPendiente(null); setTamanoOriginalFoto(null); setRecortePendiente(null); setProgresoFoto(''); setErrorFoto('') }} disabled={procesandoFoto || subiendoFoto}>Cancelar</button>
                 </div>
                 {progresoFoto && <p role="status" aria-live="polite">{progresoFoto}</p>}
               </div>
