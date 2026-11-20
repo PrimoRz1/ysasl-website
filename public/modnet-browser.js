@@ -1,0 +1,10 @@
+let modelPromise=null;
+async function loadModel(onProgress){if(!modelPromise){modelPromise=(async()=>{const {AutoModel,AutoProcessor,RawImage,env}=await import('https://cdn.jsdelivr.net/npm/@huggingface/transformers@3.8.1');env.allowLocalModels=false;env.backends.onnx.wasm.numThreads=1;const progress=e=>{if(e.status==='progress'&&Number.isFinite(e.progress))onProgress('Descargando herramienta: '+Math.round(e.progress)+' %')};const model=await AutoModel.from_pretrained('Xenova/modnet',{dtype:'fp32',device:'wasm',progress_callback:progress});const processor=await AutoProcessor.from_pretrained('Xenova/modnet');return {model,processor,RawImage}})().catch(e=>{modelPromise=null;throw e})}return modelPromise}
+
+export async function quitarFondoLocal(file,onProgress=()=>{}) {
+ const sourceURL=URL.createObjectURL(file);
+ try {
+const {model,processor,RawImage}=await loadModel(onProgress);onProgress('Quitando el fondo. Mantén esta página abierta…');let image=await RawImage.fromURL(sourceURL);const scale=Math.min(1,1600/Math.max(image.width,image.height));if(scale<1)image=await image.resize(Math.round(image.width*scale),Math.round(image.height*scale));const {pixel_values}=await processor(image);const {output}=await model({input:pixel_values});const mask=await RawImage.fromTensor(output[0].mul(255).to('uint8')).resize(image.width,image.height);const canvas=image.toCanvas();const ctx=canvas.getContext('2d');const pixels=ctx.getImageData(0,0,canvas.width,canvas.height);const channels=mask.data.length/(canvas.width*canvas.height);if(!Number.isInteger(channels)||channels<1)throw Error('Máscara no válida');for(let i=0;i<canvas.width*canvas.height;i++)pixels.data[i*4+3]=Math.round(pixels.data[i*4+3]*mask.data[i*channels]/255);ctx.putImageData(pixels,0,0);const blob=typeof canvas.convertToBlob==='function'?await canvas.convertToBlob({type:'image/png'}):await new Promise(resolve=>canvas.toBlob(resolve,'image/png'));if(!blob)throw Error('No se pudo crear el PNG');
+ if(blob.size>5*1024*1024)throw Error('El recorte supera 5 MB. Prueba con una imagen más pequeña.');return blob;
+ } finally { URL.revokeObjectURL(sourceURL) }
+}
