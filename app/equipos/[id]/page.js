@@ -191,8 +191,9 @@ export default async function EquipoPage({ params }) {
                     {equipo.escudo_url && Number(jugador.id) !== 28 && (
                       <div style={{
                         position: 'absolute', right: 11, bottom: 11,
-                        width: 61, height: 61, background: '#fffffff2',
-                        borderRadius: 13, padding: 6,
+                        width: 61, height: 61,
+                        background: equipo.nombre?.trim().toUpperCase() === 'ROMITA' ? 'transparent' : '#fffffff2',
+                        borderRadius: 13, padding: equipo.nombre?.trim().toUpperCase() === 'ROMITA' ? 0 : 6,
                         display: 'grid', placeItems: 'center',
                         boxShadow: '0 4px 12px #00000055',
                       }}>
