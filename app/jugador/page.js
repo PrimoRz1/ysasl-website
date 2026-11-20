@@ -11,6 +11,45 @@ function obtenerEquipoInvitado(valor) {
   return Number.isSafeInteger(id) && id > 0 ? id : null
 }
 
+
+const LIMITE_FOTO_ENTRADA = 15 * 1024 * 1024
+const LIMITE_FOTO_SUBIDA = 2 * 1024 * 1024
+
+async function optimizarFotografia(archivo) {
+  if (!['image/jpeg', 'image/png', 'image/webp'].includes(archivo.type)) {
+    throw new Error('Selecciona una imagen JPG, PNG o WebP.')
+  }
+  if (!archivo.size || archivo.size > LIMITE_FOTO_ENTRADA) {
+    throw new Error('La fotografía debe pesar menos de 15 MB.')
+  }
+  if (archivo.size <= LIMITE_FOTO_SUBIDA) return archivo
+
+  const bitmap = await createImageBitmap(archivo, { imageOrientation: 'from-image' })
+  try {
+    for (const maxDimension of [2000, 1600, 1200, 900, 700]) {
+      const escala = Math.min(1, maxDimension / Math.max(bitmap.width, bitmap.height))
+      const canvas = document.createElement('canvas')
+      canvas.width = Math.max(1, Math.round(bitmap.width * escala))
+      canvas.height = Math.max(1, Math.round(bitmap.height * escala))
+      const contexto = canvas.getContext('2d')
+      if (!contexto) throw new Error('No se pudo preparar la imagen.')
+      contexto.fillStyle = '#ffffff'
+      contexto.fillRect(0, 0, canvas.width, canvas.height)
+      contexto.drawImage(bitmap, 0, 0, canvas.width, canvas.height)
+      for (const calidad of [0.88, 0.78, 0.65, 0.5]) {
+        const blob = await new Promise(resolve => canvas.toBlob(resolve, 'image/jpeg', calidad))
+        if (blob && blob.size <= LIMITE_FOTO_SUBIDA) {
+          return new File([blob], archivo.name.replace(/\.[^.]+$/, '') + '-optimizada.jpg',
+            { type: 'image/jpeg' })
+        }
+      }
+    }
+    throw new Error('No fue posible reducir esta fotografía a 2 MB. Intenta con otra imagen.')
+  } finally {
+    bitmap.close()
+  }
+}
+
 export default function JugadorPage() {
   const router = useRouter()
 
@@ -23,6 +62,7 @@ export default function JugadorPage() {
   const [mensajeFoto, setMensajeFoto] = useState('')
   const [errorFoto, setErrorFoto] = useState('')
   const [fotoPendiente, setFotoPendiente] = useState(null)
+  const [optimizandoFoto, setOptimizandoFoto] = useState(false)
   const [recortePendiente, setRecortePendiente] = useState(null)
   const [procesandoFoto, setProcesandoFoto] = useState(false)
   const [progresoFoto, setProgresoFoto] = useState('')
@@ -563,10 +603,10 @@ export default function JugadorPage() {
     }
   }
 
-  function seleccionarMiFoto(e) {
+  async function seleccionarMiFoto(e) {
     const archivo = e.target.files?.[0]
     e.target.value = ''
-    if (!archivo || !usuario || !jugadorVinculado || subiendoFoto) return
+    if (!archivo || !usuario || !jugadorVinculado || subiendoFoto || optimizandoFoto) return
 
     setErrorFoto('')
     setMensajeFoto('')
@@ -580,18 +620,23 @@ export default function JugadorPage() {
       setErrorFoto('Selecciona una imagen JPG, PNG o WebP.')
       return
     }
-    if (archivo.size > 2 * 1024 * 1024 || archivo.size === 0) {
-      setErrorFoto('La fotografía debe pesar menos de 2 MB.')
-      return
+    setOptimizandoFoto(true)
+    setProgresoFoto('Optimizando fotografía…')
+    try {
+      const optimizada = await optimizarFotografia(archivo)
+      setFotoPendiente(optimizada)
+      setRecortePendiente(null)
+      setProgresoFoto(optimizada.size < archivo.size ? 'Fotografía optimizada y lista para revisar.' : '')
+    } catch (err) {
+      setErrorFoto(err.message || 'No se pudo procesar la fotografía.')
+      setProgresoFoto('')
+    } finally {
+      setOptimizandoFoto(false)
     }
-
-    setFotoPendiente(archivo)
-    setRecortePendiente(null)
-    setProgresoFoto('')
   }
 
   async function prepararRecorte() {
-    if (!fotoPendiente || procesandoFoto || subiendoFoto) return
+    if (!fotoPendiente || procesandoFoto || subiendoFoto || optimizandoFoto) return
     setProcesandoFoto(true)
     setErrorFoto('')
     setProgresoFoto('Preparando herramienta gratuita…')
@@ -610,7 +655,7 @@ export default function JugadorPage() {
 
   async function subirMiFoto(usarRecorte) {
     const archivo = fotoPendiente
-    if (!archivo || !usuario || !jugadorVinculado || subiendoFoto || procesandoFoto) return
+    if (!archivo || !usuario || !jugadorVinculado || subiendoFoto || procesandoFoto || optimizandoFoto) return
     if (usarRecorte && !recortePendiente) return
     const extension = { 'image/jpeg': 'jpg', 'image/png': 'png', 'image/webp': 'webp' }[archivo.type]
     setErrorFoto('')
@@ -784,9 +829,10 @@ height={320}
               type="file"
               accept="image/jpeg,image/png,image/webp"
               onChange={seleccionarMiFoto}
-              disabled={subiendoFoto || procesandoFoto}
+              disabled={subiendoFoto || procesandoFoto || optimizandoFoto}
             />
-            <p style={{ fontSize: '13px', color: '#64748b' }}>JPG, PNG o WebP. Máximo 2 MB.</p>
+            <p style={{ fontSize: '13px', color: '#64748b' }}>JPG, PNG o WebP. Hasta 15 MB; se optimiza automáticamente a 2 MB antes de subir.</p>
+            {optimizandoFoto && <p role="status">Optimizando fotografía…</p>}
             {fotoPendiente && (
               <div style={{ border: '1px solid #cbd5e1', borderRadius: 10, padding: 16, marginTop: 16 }}>
                 <div style={{ display: 'flex', flexWrap: 'wrap', gap: 16 }}>
@@ -900,19 +946,25 @@ height={320}
                   Elegir fotografía para la muestra
                 </label>
                 <input id="foto-muestra" type="file" accept="image/jpeg,image/png,image/webp"
-                  disabled={procesandoFoto}
-                  onChange={e => {
+                  disabled={procesandoFoto || optimizandoFoto}
+                  onChange={async e => {
                     const archivo = e.target.files?.[0]
                     e.target.value = ''
                     if (!archivo) return
-                    if (!['image/jpeg', 'image/png', 'image/webp'].includes(archivo.type) || archivo.size === 0 || archivo.size > 2 * 1024 * 1024) {
-                      setErrorFoto('Selecciona una imagen JPG, PNG o WebP de máximo 2 MB.')
-                      return
-                    }
                     setErrorFoto('')
-                    setFotoPendiente(archivo)
-                    setRecortePendiente(null)
-                    setProgresoFoto('')
+                    setOptimizandoFoto(true)
+                    setProgresoFoto('Optimizando fotografía…')
+                    try {
+                      const optimizada = await optimizarFotografia(archivo)
+                      setFotoPendiente(optimizada)
+                      setRecortePendiente(null)
+                      setProgresoFoto(optimizada.size < archivo.size ? 'Fotografía optimizada y lista para revisar.' : '')
+                    } catch (err) {
+                      setErrorFoto(err.message || 'No se pudo procesar la fotografía.')
+                      setProgresoFoto('')
+                    } finally {
+                      setOptimizandoFoto(false)
+                    }
                   }} />
                 {fotoPendiente && (
                   <>
