@@ -72,6 +72,7 @@ function LoginContenido() {
   const [mensaje, setMensaje] = useState('')
   const [mensajeExito, setMensajeExito] = useState(false)
   const [cargando, setCargando] = useState(false)
+  const [correoRecuperacion, setCorreoRecuperacion] = useState('')
 
   useEffect(() => {
     // Supabase redirige aquí al abrir el enlace de recuperación.
@@ -95,6 +96,19 @@ function LoginContenido() {
 
     return () => subscription.unsubscribe()
   }, [])
+
+  useEffect(() => {
+    if (modo !== 'nueva') return
+    let activo = true
+
+    supabase.auth.getUser().then(({ data, error }) => {
+      if (activo && !error) setCorreoRecuperacion(data.user?.email || '')
+    }).catch(() => {
+      // guardarNuevaContrasena validates the recovery session before updating.
+    })
+
+    return () => { activo = false }
+  }, [modo])
 
   function cambiarModo(siguienteModo) {
     setModo(siguienteModo)
@@ -348,6 +362,7 @@ function LoginContenido() {
 
       {modo === 'nueva' && (
         <form onSubmit={guardarNuevaContrasena}>
+          {correoRecuperacion && <p>Cuenta: <strong>{correoRecuperacion}</strong></p>}
           <label htmlFor="password-nueva">Nueva contraseña</label>
           <CampoContrasena
             id="password-nueva"
