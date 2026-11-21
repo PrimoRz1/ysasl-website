@@ -72,6 +72,13 @@ function LoginContenido() {
   const [mensaje, setMensaje] = useState('')
   const [mensajeExito, setMensajeExito] = useState(false)
   const [cargando, setCargando] = useState(false)
+  const [correoPendiente, setCorreoPendiente] = useState('')
+  const [reenviando, setReenviando] = useState(false)
+  const [avisoConfirmacion, setAvisoConfirmacion] = useState(
+    searchParams.get('confirmado') === '1'
+      ? 'Tu correo ya está confirmado. Inicia sesión con la contraseña que creaste.'
+      : ''
+  )
   const [correoRecuperacion, setCorreoRecuperacion] = useState('')
 
   useEffect(() => {
@@ -112,14 +119,18 @@ function LoginContenido() {
 
   function cambiarModo(siguienteModo) {
     setModo(siguienteModo)
+    setCorreoPendiente('')
+    setAvisoConfirmacion('')
     setMensaje('')
     setMensajeExito(false)
   }
 
   async function iniciarSesion(e) {
     e.preventDefault()
-    if (cargando) return
+    if (cargando || reenviando) return
 
+    setCorreoPendiente('')
+    setAvisoConfirmacion('')
     setCargando(true)
     setMensaje('')
     setMensajeExito(false)
@@ -131,8 +142,16 @@ function LoginContenido() {
           password
         })
 
+      if (error?.code === 'email_not_confirmed') {
+        setCorreoPendiente(email.trim())
+        setMensaje('Confirma tu correo para iniciar sesión. Revisa también Spam.')
+        return
+      }
+
       if (error || !data.user) {
-        setMensaje('Correo o contraseña incorrectos.')
+        setMensaje(error?.code === 'invalid_credentials'
+          ? 'Correo o contraseña incorrectos.'
+          : 'No se pudo iniciar sesión. Inténtalo de nuevo.')
         return
       }
 
@@ -151,6 +170,34 @@ function LoginContenido() {
       )
     } finally {
       setCargando(false)
+    }
+  }
+
+  async function reenviarConfirmacion() {
+    if (!correoPendiente || cargando || reenviando) return
+    setReenviando(true)
+    setMensaje('')
+    setMensajeExito(false)
+    try {
+      const destino = new URL('/login', window.location.origin)
+      if (equipoInvitado) destino.searchParams.set('equipo', equipoInvitado)
+
+      const { error } = await supabase.auth.resend({
+        type: 'signup',
+        email: correoPendiente,
+        options: { emailRedirectTo: destino.toString() }
+      })
+      if (error) throw error
+
+      setMensaje('Si el correo sigue pendiente de confirmar, recibirás un enlace. Revisa también Spam.')
+      setMensajeExito(true)
+      setCorreoPendiente('')
+    } catch (error) {
+      setMensaje(error.status === 429
+        ? 'Espera un momento antes de volver a solicitar el correo de confirmación.'
+        : 'No se pudo reenviar el correo de confirmación. Inténtalo de nuevo.')
+    } finally {
+      setReenviando(false)
     }
   }
 
@@ -319,7 +366,10 @@ function LoginContenido() {
             id="correo-login"
             type="email"
             value={email}
-            onChange={e => setEmail(e.target.value)}
+            onChange={e => {
+              setEmail(e.target.value)
+              setCorreoPendiente('')
+            }}
             required
             autoComplete="email"
             style={estiloCampo}
@@ -391,6 +441,10 @@ function LoginContenido() {
         </form>
       )}
 
+      {modo === 'login' && avisoConfirmacion && (
+        <p role="status" style={{ color: 'green' }}>{avisoConfirmacion}</p>
+      )}
+
       {mensaje && (
         <p role={mensajeExito ? 'status' : 'alert'} style={{
           marginTop: '20px',
@@ -398,6 +452,13 @@ function LoginContenido() {
         }}>
           {mensaje}
         </p>
+      )}
+
+      {modo === 'login' && correoPendiente && (
+        <button type="button" onClick={reenviarConfirmacion}
+          disabled={reenviando || cargando} style={estiloBoton}>
+          {reenviando ? 'Reenviando...' : 'Reenviar correo de confirmación'}
+        </button>
       )}
 
       {modo === 'login' ? (
