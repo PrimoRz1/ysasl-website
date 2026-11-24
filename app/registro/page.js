@@ -13,6 +13,7 @@ export default function RegistroPage() {
   const [cargando, setCargando] = useState(false)
   const [registrado, setRegistrado] = useState(false)
 
+  const [fichaSolicitada, setFichaSolicitada] = useState('')
   const [equipoInvitado, setEquipoInvitado] = useState(null)
   const [estadoInvitacion, setEstadoInvitacion] = useState('cargando')
   const [errorInvitacion, setErrorInvitacion] = useState('')
@@ -22,6 +23,12 @@ export default function RegistroPage() {
 
     async function revisarInvitacion() {
       const params = new URLSearchParams(window.location.search)
+      const ficha = params.get('ficha')
+      if (/^[1-9]\d*$/.test(ficha || '') && Number.isSafeInteger(Number(ficha))) {
+        setFichaSolicitada(ficha)
+        setEstadoInvitacion('ninguna')
+        return
+      }
       const equipoParam = params.get('equipo')
 
       if (!equipoParam) {
@@ -101,6 +108,7 @@ export default function RegistroPage() {
       const idInvitado = equipoInvitado?.id ?? null
       const destino = new URL('/login', window.location.origin)
 
+      if (fichaSolicitada) destino.searchParams.set('ficha', fichaSolicitada)
       if (idInvitado !== null) {
         destino.searchParams.set('equipo', String(idInvitado))
       }
@@ -112,6 +120,7 @@ export default function RegistroPage() {
           emailRedirectTo: destino.toString(),
           data: {
             nombre: nombre.trim(),
+            ...(fichaSolicitada ? { ficha_vinculacion: fichaSolicitada } : {}),
             ...(idInvitado !== null
               ? { equipo_invitacion: idInvitado }
               : {})
@@ -272,14 +281,14 @@ export default function RegistroPage() {
 
       {registrado && (
         <p>
-          <a href="/login">Ir a iniciar sesión</a>
+          <a href={fichaSolicitada ? `/login?tipo=jugador&ficha=${fichaSolicitada}` : '/login'}>Ir a iniciar sesión</a>
         </p>
       )}
 
       {!registrado && estadoInvitacion !== 'invalida' && (
         <p style={{ marginTop: '25px' }}>
           ¿Ya tienes cuenta?{' '}
-          <a href={equipoInvitado
+          <a href={fichaSolicitada ? `/login?tipo=jugador&ficha=${fichaSolicitada}` : equipoInvitado
             ? `/login?equipo=${encodeURIComponent(equipoInvitado.id)}`
             : '/login'}>
             Inicia sesión aquí
