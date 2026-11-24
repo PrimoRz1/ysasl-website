@@ -859,7 +859,7 @@ export default function DelegadoPage() {
               } (ID #{peticion.jugador_id}). Verifica su identidad antes de aprobar.</p>
               <div style={{ display: 'flex', gap: 12, flexWrap: 'wrap' }}>
                 <button type="button" disabled={procesando !== null}
-                  onClick={() => resolverVinculacion(peticion.id, true)} style={estiloBoton}>Aprobar vinculación</button>
+                  onClick={() => resolverVinculacion(peticion.id, true)} style={{ ...estiloBoton, background: "#16803c", opacity: procesando !== null ? 0.6 : 1 }}>Aprobar vinculación</button>
                 <button type="button" disabled={procesando !== null}
                   onClick={() => resolverVinculacion(peticion.id, false)}
                   style={{ ...estiloBoton, background: '#b91c1c' }}>Rechazar</button>
