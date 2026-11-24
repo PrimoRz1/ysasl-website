@@ -31,6 +31,10 @@ export default function DelegadoPage() {
   const [nuevoNombre, setNuevoNombre] = useState('')
   const [nuevoNumero, setNuevoNumero] = useState('')
   const [fotoNueva, setFotoNueva] = useState(null)
+  const [recorteFotoNueva, setRecorteFotoNueva] = useState(null)
+  const [vistaFotoNueva, setVistaFotoNueva] = useState('')
+  const [progresoFotoNueva, setProgresoFotoNueva] = useState('')
+  const fotoParaGuardar = recorteFotoNueva || fotoNueva
   const [versionFotoNueva, setVersionFotoNueva] = useState(0)
   const [vinculaciones, setVinculaciones] = useState([])
   const [errorVinculaciones, setErrorVinculaciones] = useState('')
@@ -46,6 +50,16 @@ export default function DelegadoPage() {
   const [busquedaOtrosRealizada, setBusquedaOtrosRealizada] = useState(false)
   const [buscandoOtros, setBuscandoOtros] = useState(false)
   const [errorBusquedaOtros, setErrorBusquedaOtros] = useState('')
+
+  useEffect(() => {
+    if (!fotoParaGuardar) {
+      setVistaFotoNueva('')
+      return
+    }
+    const url = URL.createObjectURL(fotoParaGuardar)
+    setVistaFotoNueva(url)
+    return () => URL.revokeObjectURL(url)
+  }, [fotoParaGuardar])
 
   useEffect(() => {
     let activo = true
@@ -251,6 +265,28 @@ export default function DelegadoPage() {
     }
   }
 
+  function elegirFotoNueva(archivo) {
+    setFotoNueva(archivo)
+    setRecorteFotoNueva(null)
+    setProgresoFotoNueva('')
+  }
+
+  async function quitarFondoFotoNueva() {
+    if (!fotoNueva || procesando !== null || !permitirAltas) return
+    setProcesando('quitar-fondo')
+    setError('')
+    setProgresoFotoNueva('Preparando herramienta gratuita…')
+    try {
+      const { quitarFondoLocal } = await import(/* webpackIgnore: true */ '/modnet-browser.js')
+      setRecorteFotoNueva(await quitarFondoLocal(fotoNueva, setProgresoFotoNueva))
+      setProgresoFotoNueva('Fondo eliminado. Revisa la vista previa antes de guardar.')
+    } catch (err) {
+      setProgresoFotoNueva('No se pudo quitar el fondo. Puedes intentar otra vez o usar la foto original.')
+    } finally {
+      setProcesando(null)
+    }
+  }
+
   async function agregarJugador(evento) {
     evento.preventDefault()
     if (procesando !== null || cargandoDatos || !equipoId) return
@@ -292,8 +328,8 @@ export default function DelegadoPage() {
       return
     }
 
-    const extension = fotoNueva && { 'image/jpeg': 'jpg', 'image/png': 'png', 'image/webp': 'webp' }[fotoNueva.type]
-    if (fotoNueva && (!extension || fotoNueva.size > 2 * 1024 * 1024 || !fotoNueva.size)) {
+    const extension = fotoParaGuardar && { 'image/jpeg': 'jpg', 'image/png': 'png', 'image/webp': 'webp' }[fotoParaGuardar.type]
+    if (fotoParaGuardar && (!extension || fotoParaGuardar.size > (recorteFotoNueva ? 5 : 2) * 1024 * 1024 || !fotoParaGuardar.size)) {
       setError('Elige una foto JPG, PNG o WebP de hasta 2 MB.')
       return
     }
@@ -302,12 +338,12 @@ export default function DelegadoPage() {
     setProcesando('agregar-jugador')
     let ruta = null
     try {
-      if (fotoNueva) {
+      if (fotoParaGuardar) {
         const { data, error: errorUsuario } = await supabase.auth.getUser()
         if (errorUsuario || !data.user) throw new Error('Inicia sesión para subir la foto.')
         const destino = data.user.id + '/' + crypto.randomUUID() + '-original.' + extension
         const { error: errorFoto } = await supabase.storage.from('fotos-jugadores')
-          .upload(destino, fotoNueva, { contentType: fotoNueva.type, upsert: false })
+          .upload(destino, fotoParaGuardar, { contentType: fotoParaGuardar.type, upsert: false })
         if (errorFoto) throw new Error('No se pudo subir la fotografía: ' + errorFoto.message)
         ruta = destino
       }
@@ -329,7 +365,7 @@ export default function DelegadoPage() {
 
       setNuevoNombre('')
       setNuevoNumero('')
-      setFotoNueva(null)
+      elegirFotoNueva(null)
       setVersionFotoNueva(v => v + 1)
       setMensaje(`${nombreLimpio} agregado a ${nombreEquipo} (ID #${idNuevo}). Puede registrarse después y vincular su cuenta; por ahora su ficha ya aparece en la plantilla.`)
 
@@ -577,7 +613,7 @@ export default function DelegadoPage() {
               setJugadoresBaja([])
               setNuevoNombre('')
               setNuevoNumero('')
-              setFotoNueva(null)
+              elegirFotoNueva(null)
               setVersionFotoNueva(v => v + 1)
               setVinculaciones([])
               setErrorVinculaciones('')
@@ -744,9 +780,25 @@ export default function DelegadoPage() {
               <label htmlFor="foto-jugador-nuevo">Foto con la camiseta oficial (opcional)</label>
               <input id="foto-jugador-nuevo" key={versionFotoNueva} type="file"
                 accept="image/jpeg,image/png,image/webp"
-                onChange={e => setFotoNueva(e.target.files?.[0] || null)}
+                onChange={e => elegirFotoNueva(e.target.files?.[0] || null)}
                 disabled={procesando !== null || cargandoDatos || !permitirAltas}
                 style={{ display: 'block', margin: '6px 0 14px' }} />
+              {fotoNueva && (
+                <div style={{ marginBottom: 14 }}>
+                  {vistaFotoNueva && <img src={vistaFotoNueva} alt={recorteFotoNueva ? 'Vista previa sin fondo' : 'Vista previa de la foto original'}
+                    style={{ display: 'block', width: 150, height: 150, objectFit: 'contain', background: '#e2e8f0', marginBottom: 8 }} />}
+                  {recorteFotoNueva ? (
+                    <button type="button" disabled={procesando !== null} onClick={() => elegirFotoNueva(fotoNueva)}>
+                      Usar foto original
+                    </button>
+                  ) : (
+                    <button type="button" disabled={procesando !== null || cargandoDatos || !permitirAltas} onClick={quitarFondoFotoNueva}>
+                      {procesando === 'quitar-fondo' ? 'Quitando fondo…' : 'Quitar fondo gratis'}
+                    </button>
+                  )}
+                  {progresoFotoNueva && <p role="status">{progresoFotoNueva}</p>}
+                </div>
+              )}
               <button
                 type="submit"
                 disabled={procesando !== null || cargandoDatos || !equipoId || !permitirAltas}
