@@ -60,7 +60,10 @@ function LoginContenido() {
       ? String(equipoNumero)
       : ''
   const sufijoEquipo = equipoInvitado ? `&equipo=${equipoInvitado}` : ''
-  const rutaRegistro = equipoInvitado ? `/registro?equipo=${equipoInvitado}` : '/registro'
+  const ficha = searchParams.get('ficha')
+  const fichaSolicitada = /^[1-9]\d*$/.test(ficha || '') && Number.isSafeInteger(Number(ficha)) ? ficha : ''
+  const rutaRegistro = fichaSolicitada ? `/registro?ficha=${fichaSolicitada}`
+    : equipoInvitado ? `/registro?equipo=${equipoInvitado}` : '/registro'
 
   // 'login' = acceso normal; 'recuperar' = enviar correo;
   // 'nueva' = guardar una nueva contraseña después de abrir el enlace.
@@ -158,9 +161,9 @@ function LoginContenido() {
       // La invitación conduce al panel del jugador, sin agregarlo al equipo.
       // El panel debe reconocer ?equipo= y comprobar solicitudes existentes.
       // Sin invitación se mantiene el selector de paneles de siempre.
-      router.replace(equipoInvitado
-        ? `/jugador?equipo=${equipoInvitado}`
-        : '/mis-paneles')
+      const destino = fichaSolicitada ? `/vincular-ficha?jugador=${fichaSolicitada}`
+        : equipoInvitado ? `/jugador?equipo=${equipoInvitado}` : '/mis-paneles'
+      router.replace(destino)
       router.refresh()
     } catch (err) {
       console.error('Error verificando acceso:', err)
@@ -180,7 +183,8 @@ function LoginContenido() {
     setMensajeExito(false)
     try {
       const destino = new URL('/login', window.location.origin)
-      if (equipoInvitado) destino.searchParams.set('equipo', equipoInvitado)
+      if (fichaSolicitada) destino.searchParams.set('ficha', fichaSolicitada)
+      else if (equipoInvitado) destino.searchParams.set('equipo', equipoInvitado)
 
       const { error } = await supabase.auth.resend({
         type: 'signup',

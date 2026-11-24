@@ -5,9 +5,6 @@ import { useRouter } from 'next/navigation'
 import { supabase } from '../../lib/supabase'
 import { EstadoConsultaSuspensiones, MarcaSuspension, useSuspensionesPlantilla } from '../../lib/suspensionesPlantilla'
 
-const ALTAS_DIRECTAS_HABILITADAS = false
-const MENSAJE_ALTAS_DIRECTAS = 'El alta directa está desactivada. Comparte el enlace de invitación para que cada jugador cree su cuenta y solicite ingreso. Si ya está en la plantilla, puede vincular su cuenta a su ficha.'
-
 function normalizarNombre(valor) {
   return String(valor || '')
     .normalize('NFD')
@@ -33,6 +30,10 @@ export default function DelegadoPage() {
   const [enlaceManual, setEnlaceManual] = useState('')
   const [nuevoNombre, setNuevoNombre] = useState('')
   const [nuevoNumero, setNuevoNumero] = useState('')
+  const [fotoNueva, setFotoNueva] = useState(null)
+  const [versionFotoNueva, setVersionFotoNueva] = useState(0)
+  const [vinculaciones, setVinculaciones] = useState([])
+  const [errorVinculaciones, setErrorVinculaciones] = useState('')
   const [altasCerradas, setAltasCerradas] = useState(false)
   const [verificandoAltas, setVerificandoAltas] = useState(true)
   const [archivoEscudo, setArchivoEscudo] = useState(null)
@@ -84,7 +85,7 @@ export default function DelegadoPage() {
       setError('')
       setMensaje('')
       try {
-        const [resSolicitudes, resJugadores, resBajas, resCierre] = await Promise.all([
+        const [resSolicitudes, resJugadores, resBajas, resCierre, resVinculaciones] = await Promise.all([
           supabase.from('solicitudes_jugadores')
             .select('id, nombre, numero, estado, created_at')
             .eq('equipo_id', Number(equipoId))
@@ -100,11 +101,16 @@ export default function DelegadoPage() {
           }),
           supabase.rpc('ysasl_altas_delegado_bloqueadas', {
             p_equipo_id: Number(equipoId)
-          })
+          }),
+          supabase.from('solicitudes_vinculacion')
+            .select('id, jugador_id, nombre').eq('equipo_id', Number(equipoId))
+            .eq('estado', 'pendiente').order('created_at')
         ])
         if (!activo) return
         setAltasCerradas(resCierre.error ? true : resCierre.data === true)
         setVerificandoAltas(false)
+        setVinculaciones(resVinculaciones.data || [])
+        setErrorVinculaciones(resVinculaciones.error ? 'No se pudieron cargar las vinculaciones.' : '')
         setSolicitudes(resSolicitudes.error ? [] : (resSolicitudes.data || []))
         setJugadores(resJugadores.error ? [] : (resJugadores.data || []))
         setJugadoresBaja(resBajas.error ? [] : (Array.isArray(resBajas.data) ? resBajas.data : []))
@@ -218,9 +224,35 @@ export default function DelegadoPage() {
     }
   }
 
+  async function resolverVinculacion(id, aprobar) {
+    if (procesando !== null) return
+    setProcesando('vinculacion-' + id)
+    setError('')
+    setMensaje('')
+    try {
+      const { error: errorRPC } = await supabase.rpc('resolver_vinculacion', {
+        p_solicitud_id: id, p_aprobar: aprobar
+      })
+      if (errorRPC) throw errorRPC
+      const [vinculos, ingresos] = await Promise.all([
+        supabase.from('solicitudes_vinculacion').select('id, jugador_id, nombre')
+          .eq('equipo_id', Number(equipoId)).eq('estado', 'pendiente').order('created_at'),
+        supabase.from('solicitudes_jugadores').select('id, nombre, numero, estado, created_at')
+          .eq('equipo_id', Number(equipoId)).eq('estado', 'pendiente').order('created_at')
+      ])
+      if (!vinculos.error) setVinculaciones(vinculos.data || [])
+      if (!ingresos.error) setSolicitudes(ingresos.data || [])
+      if (vinculos.error || ingresos.error) setError('Recarga la página para actualizar las solicitudes.')
+      setMensaje(aprobar ? 'Cuenta vinculada a la ficha existente.' : 'Vinculación rechazada.')
+    } catch (err) {
+      setError(err.message || 'No se pudo resolver la vinculación.')
+    } finally {
+      setProcesando(null)
+    }
+  }
+
   async function agregarJugador(evento) {
     evento.preventDefault()
-    if (!ALTAS_DIRECTAS_HABILITADAS) return
     if (procesando !== null || cargandoDatos || !equipoId) return
     if (!permitirAltas) {
       setError(mensajeCierre)
@@ -260,20 +292,45 @@ export default function DelegadoPage() {
       return
     }
 
+    const extension = fotoNueva && { 'image/jpeg': 'jpg', 'image/png': 'png', 'image/webp': 'webp' }[fotoNueva.type]
+    if (fotoNueva && (!extension || fotoNueva.size > 2 * 1024 * 1024 || !fotoNueva.size)) {
+      setError('Elige una foto JPG, PNG o WebP de hasta 2 MB.')
+      return
+    }
+
     const idEquipoAlGuardar = Number(equipoId)
     setProcesando('agregar-jugador')
+    let ruta = null
     try {
+      if (fotoNueva) {
+        const { data, error: errorUsuario } = await supabase.auth.getUser()
+        if (errorUsuario || !data.user) throw new Error('Inicia sesión para subir la foto.')
+        const destino = data.user.id + '/' + crypto.randomUUID() + '-original.' + extension
+        const { error: errorFoto } = await supabase.storage.from('fotos-jugadores')
+          .upload(destino, fotoNueva, { contentType: fotoNueva.type, upsert: false })
+        if (errorFoto) throw new Error('No se pudo subir la fotografía: ' + errorFoto.message)
+        ruta = destino
+      }
       // El RPC comprueba el permiso del delegado EN SUPABASE; no confía en el navegador.
-      const { data: idNuevo, error: errorRPC } = await supabase.rpc('agregar_jugador_delegado', {
+      const { data: idNuevo, error: errorRPC } = await supabase.rpc('agregar_jugador_delegado_con_foto', {
         p_equipo_id: idEquipoAlGuardar,
         p_nombre: nombreLimpio,
-        p_numero: numeroTexto === '' ? null : Number(numeroTexto)
+        p_numero: numeroTexto === '' ? null : Number(numeroTexto),
+        p_ruta: ruta
       })
-      if (errorRPC) throw errorRPC
+      if (errorRPC) {
+        // Un rechazo confirmado de PostgreSQL revierte el alta y deja la foto sin ficha.
+        if (ruta && /^[A-Z0-9]{5}$/.test(errorRPC.code || '')) {
+          await supabase.storage.from('fotos-jugadores').remove([ruta])
+        }
+        throw errorRPC
+      }
       if (idNuevo === null || idNuevo === undefined) throw new Error('No se confirmó el registro del jugador.')
 
       setNuevoNombre('')
       setNuevoNumero('')
+      setFotoNueva(null)
+      setVersionFotoNueva(v => v + 1)
       setMensaje(`${nombreLimpio} agregado a ${nombreEquipo} (ID #${idNuevo}). Puede registrarse después y vincular su cuenta; por ahora su ficha ya aparece en la plantilla.`)
 
       const { data: listaActualizada, error: errorConsulta } = await supabase.from('jugadores')
@@ -520,6 +577,10 @@ export default function DelegadoPage() {
               setJugadoresBaja([])
               setNuevoNombre('')
               setNuevoNumero('')
+              setFotoNueva(null)
+              setVersionFotoNueva(v => v + 1)
+              setVinculaciones([])
+              setErrorVinculaciones('')
               setBusquedaOtros('')
               setResultadosOtros([])
               setBusquedaOtrosRealizada(false)
@@ -642,17 +703,17 @@ export default function DelegadoPage() {
           </div>
 
           <div style={{
-            border: '1px solid #d5e2ee', background: ALTAS_DIRECTAS_HABILITADAS ? '#fff' : '#f1f5f9',
+            border: '1px solid #d5e2ee', background: '#fff',
             borderRadius: '10px', padding: '18px', marginBottom: '30px'
           }}>
             <h3 style={{ marginTop: 0 }}>Agregar jugador directamente</h3>
-            {ALTAS_DIRECTAS_HABILITADAS ? <p>
+            <p>
               Registra un jugador en <strong>{nombreEquipo}</strong> sin esperar
               a que solicite ingreso. Solamente puedes agregar jugadores a tus equipos.
               Si el jugador ya aparece en la plantilla, no crees otra ficha:
               podrá vincular su cuenta más adelante. Si estuvo en otro equipo,
               utiliza primero la búsqueda de bajas que aparece más abajo.
-            </p> : <p id="altas-directas-desactivadas">{MENSAJE_ALTAS_DIRECTAS}</p>}
+            </p>
             <form onSubmit={agregarJugador}>
               <label htmlFor="nombre-jugador-nuevo">Nombre completo</label>
               <input
@@ -662,7 +723,7 @@ export default function DelegadoPage() {
                 value={nuevoNombre}
                 onChange={e => setNuevoNombre(e.target.value)}
                 maxLength={120}
-                disabled={!ALTAS_DIRECTAS_HABILITADAS || procesando !== null || cargandoDatos || !permitirAltas}
+                disabled={procesando !== null || cargandoDatos || !permitirAltas}
                 required
                 style={{ display: 'block', width: '100%', padding: '10px',
                   boxSizing: 'border-box', marginTop: '6px', marginBottom: '14px' }}
@@ -676,16 +737,20 @@ export default function DelegadoPage() {
                 step="1"
                 value={nuevoNumero}
                 onChange={e => setNuevoNumero(e.target.value)}
-                disabled={!ALTAS_DIRECTAS_HABILITADAS || procesando !== null || cargandoDatos || !permitirAltas}
+                disabled={procesando !== null || cargandoDatos || !permitirAltas}
                 style={{ display: 'block', width: '100%', padding: '10px',
                   boxSizing: 'border-box', marginTop: '6px', marginBottom: '14px' }}
               />
+              <label htmlFor="foto-jugador-nuevo">Foto con la camiseta oficial (opcional)</label>
+              <input id="foto-jugador-nuevo" key={versionFotoNueva} type="file"
+                accept="image/jpeg,image/png,image/webp"
+                onChange={e => setFotoNueva(e.target.files?.[0] || null)}
+                disabled={procesando !== null || cargandoDatos || !permitirAltas}
+                style={{ display: 'block', margin: '6px 0 14px' }} />
               <button
                 type="submit"
-                disabled={!ALTAS_DIRECTAS_HABILITADAS || procesando !== null || cargandoDatos || !equipoId || !permitirAltas}
-                aria-describedby={ALTAS_DIRECTAS_HABILITADAS ? undefined : 'altas-directas-desactivadas'}
-                style={{ ...estiloBoton, background: ALTAS_DIRECTAS_HABILITADAS ? '#16803c' : '#64748b',
-                  cursor: ALTAS_DIRECTAS_HABILITADAS ? estiloBoton.cursor : 'not-allowed' }}
+                disabled={procesando !== null || cargandoDatos || !equipoId || !permitirAltas}
+                style={{ ...estiloBoton, background: '#16803c' }}
               >
                 {procesando === 'agregar-jugador' ? 'Guardando...' : 'Agregar jugador'}
               </button>
@@ -730,6 +795,25 @@ export default function DelegadoPage() {
               </div>
             ))
           )}
+
+          <h2>Solicitudes para vincular fichas</h2>
+          {errorVinculaciones ? <p role="alert">{errorVinculaciones}</p> : (
+            !cargandoDatos && vinculaciones.length === 0 && <p>No hay vinculaciones pendientes.</p>
+          )}
+          {vinculaciones.map(peticion => (
+            <div key={peticion.id} style={{ border: '1px solid #ddd', padding: 16, marginBottom: 12 }}>
+              <p><strong>{peticion.nombre}</strong> solicita vincular la ficha de {
+                jugadores.find(j => j.id === peticion.jugador_id)?.nombre || 'jugador'
+              } (ID #{peticion.jugador_id}). Verifica su identidad antes de aprobar.</p>
+              <div style={{ display: 'flex', gap: 12, flexWrap: 'wrap' }}>
+                <button type="button" disabled={procesando !== null}
+                  onClick={() => resolverVinculacion(peticion.id, true)} style={estiloBoton}>Aprobar vinculación</button>
+                <button type="button" disabled={procesando !== null}
+                  onClick={() => resolverVinculacion(peticion.id, false)}
+                  style={{ ...estiloBoton, background: '#b91c1c' }}>Rechazar</button>
+              </div>
+            </div>
+          ))}
 
           <hr style={{ margin: '30px 0' }} />
           <h2>Administrar jugadores</h2>

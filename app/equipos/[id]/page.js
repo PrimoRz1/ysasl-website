@@ -46,6 +46,9 @@ export default async function EquipoPage({ params }) {
     )
   }
 
+  const { data: fichas } = await supabase.rpc('fichas_sin_cuenta', { p_equipo_id: equipo.id })
+  const fichasSinCuenta = new Set((fichas || []).map(f => String(f.jugador_id)))
+
   let suspendidos = new Set()
   let errorSuspensiones = null
   if (!errorJugadores && jugadores?.length) {
@@ -242,6 +245,12 @@ export default async function EquipoPage({ params }) {
                 </article>
               </Link>
               <DescargarTarjeta jugador={{ nombre: jugador.nombre, numero: jugador.numero, foto: jugador.foto_url || jugador.foto_uniforme_url }} equipo={{ nombre: equipo.nombre, escudo_url: equipo.escudo_url }} colores={[primario, oscuro, dorado]} />
+              {fichasSinCuenta.has(String(jugador.id)) && (
+                <Link href={`/vincular-ficha?jugador=${jugador.id}`}
+                  style={{ display: 'inline-block', marginTop: 12, color: '#0b2948' }}>
+                  ¿Eres tú? Vincula tu cuenta
+                </Link>
+              )}
               </div>
             ))}
           </div>
