@@ -160,9 +160,10 @@ function LoginContenido() {
 
       // La invitación conduce al panel del jugador, sin agregarlo al equipo.
       // El panel debe reconocer ?equipo= y comprobar solicitudes existentes.
-      // Sin invitación se mantiene el selector de paneles de siempre.
       const destino = fichaSolicitada ? `/vincular-ficha?jugador=${fichaSolicitada}`
-        : equipoInvitado ? `/jugador?equipo=${equipoInvitado}` : '/mis-paneles'
+        : equipoInvitado ? `/jugador?equipo=${equipoInvitado}`
+          : tipoAcceso === 'jugador' ? '/jugador'
+            : tipoAcceso === 'equipo' ? '/administradores-equipo' : '/mis-paneles'
       router.replace(destino)
       router.refresh()
     } catch (err) {

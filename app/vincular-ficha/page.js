@@ -72,7 +72,7 @@ function VincularFicha() {
         <>
           <p><strong>{ficha.nombre}</strong> · {ficha.equipos?.nombre || 'Equipo #' + ficha.equipo_id}</p>
           {estado === 'pendiente' ? <p role="status">Solicitud enviada. El delegado de tu equipo debe aprobarla.</p>
-            : estado === 'aprobada' ? <p role="status">Tu cuenta está vinculada a esta ficha.</p>
+            : estado === 'aprobada' ? <div><p role="status">Tu cuenta está vinculada a esta ficha.</p><Link href="/jugador">Ir a Mi Panel de Jugador</Link></div>
               : usuario ? (
                 <button type="button" disabled={enviando} onClick={solicitar}>
                   {enviando ? 'Enviando…' : 'Solicitar vinculación'}
